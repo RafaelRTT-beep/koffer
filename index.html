@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="robots" content="noindex">
+<meta name="description" content="Kaart van de RAF Challenge case. Open de link die je van de spelleider kreeg.">
+<meta property="og:title" content="RAF Challenge case">
+<meta property="og:description" content="Waar is de koffer? Open de link van de spelleider.">
+<meta name="theme-color" content="#0b0f13">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>RAF Challenge case</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0f13'/%3E%3Ccircle cx='16' cy='16' r='9' fill='%23DC0000' stroke='%23fff' stroke-width='3'/%3E%3C/svg%3E">
+<!-- Leaflet 1.9.4 staat in deze repo (leaflet/, BSD-2): geen extra server nodig op het veld -->
+<link rel="stylesheet" href="leaflet/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=">
+<script src="leaflet/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="></script>
+<style>
+:root{--bg:#0b0f13;--paneel:#121920;--paneel2:#19222b;--rand:#26323d;--tekst:#e9eff5;--zacht:#9fb0bf;
+  --rood:#DC0000;--rood2:#ff3b3b;--geel:#FFD400;--cyaan:#18D6E0;--groen:#2ECC40;--blauw:#2D8CFF}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--tekst);
+  font:15px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+#kaart{position:fixed;inset:0;background:#0b0f13}
+.leaflet-container{background:#0b0f13;font:inherit}
+.leaflet-control-attribution{font-size:10px;background:rgba(11,15,19,.75)!important;color:#9fb0bf}
+.leaflet-control-attribution a{color:#9cf}
+.kop{position:fixed;left:10px;top:calc(10px + env(safe-area-inset-top));z-index:500;max-width:calc(100% - 70px);
+  background:rgba(18,25,32,.92);border:1px solid var(--rand);border-radius:12px;padding:8px 12px;
+  box-shadow:0 6px 18px rgba(0,0,0,.45);backdrop-filter:blur(6px)}
+.kop h1{margin:0;font-size:16px;letter-spacing:.3px}
+.kop h1 b{color:var(--rood2)}
+.pil{display:inline-block;margin-top:4px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;
+  letter-spacing:.4px;background:#2a3540;color:#cfe}
+.pil.live{background:var(--rood);color:#fff}.pil.uit{background:#3a3a3a;color:#bbb}
+.pil.vaag{background:#6b4fd8;color:#fff}.pil.vertraagd{background:#c77700;color:#fff}
+.onder{position:fixed;left:0;right:0;bottom:0;z-index:600;padding:10px 10px calc(10px + env(safe-area-inset-bottom));
+  pointer-events:none}
+.kaartje{pointer-events:auto;max-width:560px;margin:0 auto;background:rgba(18,25,32,.96);border:1px solid var(--rand);
+  border-radius:16px;padding:12px 14px;box-shadow:0 -4px 24px rgba(0,0,0,.5)}
+.regels{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:14px}
+.regels dt{color:var(--zacht)}.regels dd{margin:0;font-variant-numeric:tabular-nums}
+.melding{margin:0 0 8px;font-size:14px;color:var(--geel)}
+.knoppen{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+button,.knop{font:inherit;border:1px solid var(--rand);background:var(--paneel2);color:var(--tekst);border-radius:10px;
+  padding:9px 12px;cursor:pointer;min-height:40px}
+button.aan{background:#203a52;border-color:#3a6a95}
+button.hoofd{background:var(--rood);border-color:var(--rood);color:#fff;font-weight:700}
+button:disabled{opacity:.5}
+.instel{position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.5);display:none}
+.instel.open{display:block}
+.blad{position:absolute;left:0;right:0;bottom:0;max-height:88%;overflow:auto;background:var(--paneel);
+  border-top:1px solid var(--rand);border-radius:18px 18px 0 0;padding:14px 16px calc(90px + env(safe-area-inset-bottom));
+  max-width:600px;margin:0 auto}
+.blad h2{margin:2px 0 4px;font-size:18px}.blad h3{margin:18px 0 6px;font-size:13px;color:var(--zacht);
+  text-transform:uppercase;letter-spacing:.6px}
+.veld{margin:10px 0}.veld label{display:block;font-size:14px;margin-bottom:6px}
+.veld .uitleg{font-size:12px;color:var(--zacht);margin-top:4px}
+.keuze{display:flex;gap:6px;flex-wrap:wrap}.keuze button{flex:1 1 auto;min-width:72px}
+.keuze button.gekozen{background:var(--rood);border-color:var(--rood);color:#fff;font-weight:700}
+input[type=range]{width:100%;accent-color:var(--rood)}
+.waarde{float:right;font-weight:700;font-variant-numeric:tabular-nums}
+.schakel{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.schakel input{width:22px;height:22px;accent-color:var(--rood)}
+input[type=text]{font:inherit;width:100%;padding:8px;border-radius:8px;border:1px solid var(--rand);background:#0b1116;color:var(--tekst)}
+select{font:inherit;padding:8px;border-radius:8px;border:1px solid var(--rand);background:#0b1116;color:var(--tekst)}
+.zone{border:1px solid var(--rand);border-radius:10px;padding:8px;margin:8px 0;background:var(--paneel2)}
+.zone .rij{display:flex;gap:6px;align-items:center}.zone .rij input[type=text]{flex:1}
+.link{word-break:break-all;font-size:13px;background:#0b1116;border:1px solid var(--rand);border-radius:8px;padding:8px}
+.vast{position:fixed;left:0;right:0;bottom:0;z-index:950;padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+  background:rgba(18,25,32,.98);border-top:1px solid var(--rand);display:none;gap:8px;justify-content:center}
+.instel.open~.vast{display:flex}
+.vast button{flex:1;max-width:280px}
+.tekenbalk{position:fixed;left:50%;transform:translateX(-50%);top:calc(70px + env(safe-area-inset-top));z-index:980;
+  display:none;background:rgba(18,25,32,.97);border:1px solid var(--geel);border-radius:12px;padding:8px 10px;
+  max-width:calc(100% - 20px);box-shadow:0 6px 18px rgba(0,0,0,.5)}
+.tekenbalk.open{display:block}.tekenbalk p{margin:0 0 6px;font-size:14px}
+.tekenbalk .knoppen{margin-top:4px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom));z-index:999;
+  background:#000;border:1px solid var(--rand);border-radius:10px;padding:8px 12px;font-size:14px;display:none;
+  width:max-content;max-width:calc(100% - 32px);text-align:center}
+.koffer-ico{width:22px;height:22px;border-radius:50%;background:var(--rood);border:3px solid #fff;
+  box-shadow:0 0 0 0 rgba(220,0,0,.7);animation:puls 2s infinite}
+.koffer-ico.oud{background:#777;animation:none}
+@keyframes puls{0%{box-shadow:0 0 0 0 rgba(220,0,0,.6)}70%{box-shadow:0 0 0 16px rgba(220,0,0,0)}100%{box-shadow:0 0 0 0 rgba(220,0,0,0)}}
+.ik-ico{width:16px;height:16px;border-radius:50%;background:var(--blauw);border:3px solid #fff}
+.zone-label{background:rgba(11,15,19,.85);border:1px solid var(--rand);color:#fff;font-weight:700;border-radius:6px;
+  padding:1px 6px;box-shadow:none}
+.zone-label:before{display:none}
+.leeg{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:1000;background:var(--bg);
+  padding:24px;text-align:center}
+.leeg.open{display:flex}.leeg div{max-width:420px}
+</style>
+</head>
+<body>
+<div id="kaart"></div>
+
+<div class="kop"><h1><b>RAF</b> Challenge case</h1><span id="pil" class="pil">laden…</span></div>
+
+<div class="onder"><div class="kaartje">
+  <p id="melding" class="melding" hidden></p>
+  <dl class="regels" id="regels"></dl>
+  <div class="knoppen">
+    <button id="bVolg" class="aan" title="De kaart houdt de koffer in beeld">Volg koffer</button>
+    <button id="bIk" title="Laat je eigen plek zien (de pagina vraagt toestemming)">Mijn plek</button>
+    <button id="bInstel" class="hoofd" hidden>Instellingen</button>
+  </div>
+</div></div>
+
+<div class="instel" id="instel"><div class="blad" id="blad"></div></div>
+<div class="vast"><button id="bSluit">Sluiten</button><button id="bOpslaan" class="hoofd">Opslaan</button></div>
+
+<div class="tekenbalk" id="tekenbalk">
+  <p id="tekenUitleg"></p>
+  <div class="knoppen" id="tekenKnoppen"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="leeg" id="leeg"><div>
+  <h2>RAF Challenge case</h2>
+  <p id="leegTekst">Open de link die je van de spelleider kreeg.</p>
+</div></div>
+
+<script>
+'use strict';
+// De kaart van de RAF Challenge case. De gegevens komen uit Supabase (project RTT APP) via drie functies:
+// koffer_kaart (wat je mag zien), koffer_instel (alleen met de spelleider-link). De sleutel hieronder is de publieke
+// sleutel van het project (bedoeld voor webpagina's); de toegang hangt aan de code in de link (#k= of #l=).
+// De code staat achter het hekje: een browser stuurt dat deel nooit mee in een adres of referer (niet naar GitHub,
+// niet naar de kaarttegels); alleen Supabase krijgt hem, in het verzoek zelf.
+const SB = 'https://wrkoeoharqyjjjnlihgu.supabase.co/rest/v1/rpc/';
+const SLEUTEL = 'sb_publishable_3KEKBN8KSyfbDGV23aD0_A_Lk0ZgBG_';
+const ZICHT = ['niets', 'live', 'vertraagd', 'vaag'];
+const ACTIE = ['alleen tonen', 'alarm', 'straf', 'BOEM'];
+
+const hash = new URLSearchParams(location.hash.slice(1));
+const code = hash.get('l') || hash.get('k') || '';
+let data = null, fout = '', volgKoffer = true, eersteBeeld = true, ikPlek = null, ikWatch = null;
+let concept = null, origineel = null, teken = null, laatsteHaal = 0, bezig = false;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// ---------------------------------------------------------------- de kaart
+const kaart = L.map('kaart', {zoomControl: false}).setView([51.90, 4.45], 12);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(kaart);
+L.control.zoom({position: 'topright'}).addTo(kaart);
+kaart.on('dragstart', () => { if (volgKoffer) zetVolg(false); });
+
+const laag = {
+  spoor: L.polyline([], {color: '#ff3b3b', weight: 4, opacity: .7}).addTo(kaart),
+  nauw: L.circle([0, 0], {radius: 1, color: '#ff3b3b', weight: 1, opacity: .5, fillOpacity: .08}),
+  vaag: L.circle([0, 0], {radius: 1, color: '#b9a6ff', weight: 2, dashArray: '6 6', fillColor: '#6b4fd8', fillOpacity: .18}),
+  koffer: L.marker([0, 0], {icon: L.divIcon({className: '', html: '<div class="koffer-ico"></div>', iconSize: [22, 22]}),
+                            zIndexOffset: 1000}),
+  grens: L.layerGroup().addTo(kaart),
+  zones: L.layerGroup().addTo(kaart),
+  concept: L.layerGroup().addTo(kaart),
+  ik: L.layerGroup().addTo(kaart),
+};
+
+function tekenGrens(groep, g, concept) {
+  if (!g) return;
+  const stijl = {color: '#FFD400', weight: 3, dashArray: concept ? '4 8' : '10 6', fillColor: '#FFD400', fillOpacity: .06};
+  if (g.soort === 'cirkel' && isFinite(g.lat) && isFinite(g.lon) && g.r > 0) L.circle([g.lat, g.lon], {...stijl, radius: g.r}).addTo(groep);
+  else if (g.soort === 'veelhoek' && Array.isArray(g.punten) && g.punten.length) {
+    if (g.punten.length >= 3) L.polygon(g.punten, stijl).addTo(groep);
+    else L.polyline(g.punten, stijl).addTo(groep);
+    if (concept) g.punten.forEach(p => L.circleMarker(p, {radius: 5, color: '#FFD400', fillOpacity: 1}).addTo(groep));
+  }
+}
+function tekenZones(groep, zones) {
+  (zones || []).forEach(z => {
+    if (!isFinite(z.lat) || !isFinite(z.lon)) return;
+    const kleur = z.soort === 'eind' ? '#2ECC40' : '#18D6E0';
+    L.circle([z.lat, z.lon], {radius: z.r || 25, color: kleur, weight: 2, fillColor: kleur, fillOpacity: .15}).addTo(groep)
+      .bindTooltip(esc(z.naam || (z.soort === 'eind' ? 'EIND' : 'CP')), {permanent: true, direction: 'top', className: 'zone-label'});
+  });
+}
+
+// ---------------------------------------------------------------- tijd en afstand
+const tijd = s => s == null ? '–' : s < 5 ? 'zojuist' : s < 90 ? Math.round(s) + ' s geleden' :
+  s < 5400 ? Math.round(s / 60) + ' min geleden' : s < 172800 ? Math.round(s / 3600) + ' u geleden' : Math.round(s / 86400) + ' dagen geleden';
+const afstand = m => m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(m < 10000 ? 2 : 1).replace('.', ',') + ' km';
+
+// ---------------------------------------------------------------- ophalen
+async function rpc(fn, body) {
+  const r = await fetch(SB + fn, {method: 'POST', headers: {apikey: SLEUTEL, 'Content-Type': 'application/json'},
+    body: JSON.stringify(body), cache: 'no-store'});
+  const t = await r.text();
+  let j = null;
+  try { j = JSON.parse(t); } catch (e) {}
+  if (!r.ok) throw new Error(r.status === 403 ? 'Deze link werkt niet (meer). Vraag de spelleider om een nieuwe.' :
+                             (j && j.message) || ('fout ' + r.status));
+  return j;
+}
+
+async function haal() {
+  if (bezig || !code) return;
+  bezig = true;
+  try {
+    data = await rpc('koffer_kaart', {p_code: code, p_spoor_min: 60});
+    fout = '';
+    laatsteHaal = Date.now();
+    tekenAlles();
+  } catch (e) {
+    fout = e.message || 'geen verbinding';
+    tekenStatus();
+  } finally {
+    bezig = false;
+  }
+}
+
+function tussenpoos() {
+  if (!data) return 5000;
+  if (data.rol === 'leider') return 5000;
+  return 10000;
+}
+(function lus() {
+  if (!document.hidden) haal();
+  setTimeout(lus, tussenpoos());
+})();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) haal(); });
+window.addEventListener('hashchange', () => location.reload());  // een andere link in hetzelfde tabblad
+
+// ---------------------------------------------------------------- tekenen
+function leeftijd() { return data && data.gezien ? Math.max(0, data.nu - data.gezien + (Date.now() - laatsteHaal) / 1000) : null; }
+
+// Hoe oud 'gezien' mag zijn voor 'verbonden'. Zolang de koffer volgt, meldt hij zich elke interval_s (standaard 15 s,
+// zonder GPS-fix elke minuut); in rust maar eens per half uur (firmware gps1). Zonder dit onderscheid stond een koffer
+// die rustig in de kast ligt bijna altijd op OFFLINE. Kijkers kennen 'volgen' niet: voor hen telt een open spel.
+function volgtNu(d) {
+  if (d.rol === 'leider' && d.instelling) return d.instelling.volgen === 2 || (d.instelling.volgen === 1 && !!d.spel);
+  return !!d.spel;
+}
+// De spelleider veranderde iets NA de laatste melding: de koffer meldt dan nog in zijn oude tempo (in rust een half
+// uur) tot hij het hoort. Zonder dit stond hij meteen na 'Volgen: altijd' op OFFLINE.
+function nogOud(d) {
+  if (d.rol !== 'leider' || !d.instelling || !d.gezien || !d.instelling.bijgewerkt) return false;
+  const b = Date.parse(String(d.instelling.bijgewerkt).replace(/(\.\d{3})\d+/, '$1'));  // Safari: hoogstens ms
+  return isFinite(b) && b / 1000 > d.gezien;
+}
+function verwachtS(d) {
+  const iv = d.rol === 'leider' && d.instelling ? d.instelling.interval_s : 15;
+  return volgtNu(d) && !nogOud(d) ? Math.max(180, 3 * iv + 60) : 40 * 60;
+}
+
+function tekenAlles() {
+  const d = data;
+  const pos = d.pos;
+  [laag.nauw, laag.vaag, laag.koffer].forEach(l => kaart.removeLayer(l));
+  laag.spoor.setLatLngs((d.spoor || []).map(p => [p[0], p[1]]));
+  if (pos && pos.cirkel) {
+    laag.vaag.setLatLng([pos.lat, pos.lon]).setRadius(pos.cirkel).addTo(kaart);
+  } else if (pos) {
+    laag.koffer.setLatLng([pos.lat, pos.lon]).addTo(kaart);
+    const oud = d.nu - pos.t > 300;
+    const el = laag.koffer.getElement();
+    if (el) el.firstChild.classList.toggle('oud', oud);
+    if (d.rol === 'leider' && pos.nauw > 0) laag.nauw.setLatLng([pos.lat, pos.lon]).setRadius(pos.nauw).addTo(kaart);
+  }
+  const ins = concept || (d.rol === 'leider' ? d.instelling : d);
+  laag.grens.clearLayers();
+  laag.zones.clearLayers();
+  if (!concept) {
+    tekenGrens(laag.grens, d.rol === 'leider' ? d.instelling.grens : d.grens, false);
+    tekenZones(laag.zones, d.rol === 'leider' ? d.instelling.zones : d.zones);
+  }
+  if (pos && volgKoffer) {
+    const ll = [pos.lat, pos.lon];
+    if (eersteBeeld) kaart.setView(ll, pos.cirkel ? 16 : 17);
+    else if (!kaart.getBounds().pad(-0.25).contains(ll)) kaart.panTo(ll);
+    eersteBeeld = false;
+  } else if (eersteBeeld) {
+    const g = d.rol === 'leider' ? d.instelling.grens : d.grens;
+    if (g) {
+      const groep = L.featureGroup();
+      tekenGrens(groep, g, false);
+      if (groep.getLayers().length) kaart.fitBounds(groep.getBounds(), {padding: [30, 30]});
+    }
+    eersteBeeld = false;
+  }
+  tekenStatus();
+}
+
+function tekenStatus() {
+  const pil = $('pil'), m = $('melding');
+  const d = data;
+  $('leeg').classList.toggle('open', !code || (!d && /link/.test(fout)));
+  if (!code) $('leegTekst').textContent = 'Open de link die je van de spelleider kreeg.';
+  else if (!d && fout) $('leegTekst').textContent = fout;
+  if (!d) { pil.textContent = fout ? 'geen verbinding' : 'laden…'; return; }
+  const age = leeftijd();
+  const online = age != null && age < verwachtS(d);
+  let pilTekst, pilKlas;
+  if (d.rol === 'leider') { pilTekst = 'SPELLEIDER'; pilKlas = 'live'; }
+  else { pilTekst = ZICHT[d.zicht].toUpperCase(); pilKlas = ['uit', 'live', 'vertraagd', 'vaag'][d.zicht]; }
+  if (!online) { pilTekst += ' · OFFLINE'; pilKlas = 'uit'; }
+  pil.textContent = pilTekst;
+  pil.className = 'pil ' + pilKlas;
+
+  const regels = [];
+  const spel = d.spel ? d.spel + (d.fase ? ' · ' + d.fase : '') : 'geen spel open';
+  regels.push(['Spel', esc(spel)]);
+  regels.push(['Gezien', !online ? 'niet verbonden (' + tijd(age) + ')' :
+    tijd(age) + (d.rol !== 'leider' ? '' : nogOud(d) ? ' · nieuwe instelling nog onderweg' :
+                 !volgtNu(d) ? ' · in rust, meldt zich elk half uur' : '')]);
+  if (d.rol === 'leider') {
+    const ins = d.instelling;
+    regels.push(['Plek', d.pos ? tijd(d.nu - d.pos.t) + (d.pos.nauw ? ' · ± ' + Math.round(d.pos.nauw) + ' m' : '') +
+      (d.pos.kmh > 1 ? ' · ' + d.pos.kmh.toFixed(1).replace('.', ',') + ' km/u' : '') : 'nog geen plek']);
+    regels.push(['Koffer', (d.accu != null ? 'accu ' + d.accu + ' %' : '') + (d.sats != null ? ' · ' + d.sats + ' satellieten' : '') +
+      (d.fix === false ? ' · geen GPS-fix' : '')]);
+    regels.push(['Volgen', ['uit', 'tijdens een spel', 'altijd'][ins.volgen] + ', elke ' + ins.interval_s + ' s']);
+    regels.push(['Kijkers', ZICHT[ins.zicht] + (ins.zicht >= 2 ? ' (' + ins.vertraging_s + ' s)' : '') +
+      (ins.zicht === 3 ? ', cirkel ' + ins.cirkel_m + ' m' : '')]);
+  } else if (d.zicht === 0) {
+    regels.push(['Plek', 'de spelleider houdt de koffer nu verborgen']);
+  } else if (d.pos) {
+    let p = tijd(d.nu - d.pos.t);
+    if (d.zicht === 3) p += ' · ergens in de cirkel (' + d.pos.cirkel + ' m)';
+    regels.push(['Plek', p]);
+  } else {
+    regels.push(['Plek', 'nog geen plek']);
+  }
+  if (ikPlek && d.pos) {
+    const a = kaart.distance([ikPlek.lat, ikPlek.lng], [d.pos.lat, d.pos.lon]);
+    regels.push(['Afstand', d.pos.cirkel ? afstand(Math.max(0, a - d.pos.cirkel)) + ' tot de cirkel' : afstand(a)]);
+  }
+  $('regels').innerHTML = regels.map(r => '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>').join('');
+  m.hidden = !fout;
+  m.textContent = fout ? 'Even geen verbinding: ' + fout : '';
+  $('bInstel').hidden = d.rol !== 'leider';
+}
+setInterval(() => { if (data) tekenStatus(); }, 1000);
+
+function zetVolg(aan) {
+  volgKoffer = aan;
+  $('bVolg').classList.toggle('aan', aan);
+  if (aan && data && data.pos) kaart.panTo([data.pos.lat, data.pos.lon]);
+}
+$('bVolg').onclick = () => zetVolg(!volgKoffer);
+
+$('bIk').onclick = () => {
+  if (ikWatch != null) {
+    navigator.geolocation.clearWatch(ikWatch);
+    ikWatch = null; ikPlek = null; laag.ik.clearLayers();
+    $('bIk').classList.remove('aan');
+    tekenStatus();
+    return;
+  }
+  if (!navigator.geolocation) return toast('Je telefoon geeft geen plek door');
+  $('bIk').classList.add('aan');
+  ikWatch = navigator.geolocation.watchPosition(p => {
+    ikPlek = {lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy};
+    laag.ik.clearLayers();
+    L.circle([ikPlek.lat, ikPlek.lng], {radius: ikPlek.acc, color: '#2D8CFF', weight: 1, fillOpacity: .1}).addTo(laag.ik);
+    L.marker([ikPlek.lat, ikPlek.lng], {icon: L.divIcon({className: '', html: '<div class="ik-ico"></div>', iconSize: [16, 16]})}).addTo(laag.ik);
+    tekenStatus();
+  }, e => { toast('Geen plek: ' + (e.code === 1 ? 'geen toestemming' : 'niet gevonden')); $('bIk').classList.remove('aan'); ikWatch = null; },
+  {enableHighAccuracy: true, maximumAge: 5000});
+};
+
+function toast(t) {
+  const el = $('toast');
+  el.textContent = t;
+  el.style.display = 'block';
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => { el.style.display = 'none'; }, Math.max(3200, t.length * 60));
+}
+
+// ---------------------------------------------------------------- instellingen (alleen de spelleider)
+const VELDEN = [
+  {kop: 'Volgen'},
+  {k: 'volgen', soort: 'keuze', label: 'Wanneer geeft de koffer zijn plek door', opties: [[1, 'Tijdens een spel'], [2, 'Altijd'], [0, 'Uit']],
+   uitleg: 'Tijdens een spel = als DEFUSE of TRANSPORT open staat op de koffer.'},
+  {k: 'interval_s', soort: 'schuif', label: 'Plek doorgeven elke', min: 5, max: 300, stap: 5, eenheid: 's',
+   uitleg: 'Vaker = meer 4G-data (ongeveer 1-2 MB per uur bij 15 s).'},
+  {kop: 'Wat kijkers zien'},
+  {k: 'zicht', soort: 'keuze', label: 'Met de kijk-link', opties: [[1, 'Live'], [2, 'Vertraagd'], [3, 'Vaag'], [0, 'Niets']],
+   uitleg: 'Vaag = een cirkel waar de koffer ergens in ligt; hij blijft staan tot de koffer eruit loopt.'},
+  {k: 'vertraging_s', soort: 'schuif', label: 'Vertraging', min: 0, max: 600, stap: 10, eenheid: 's', toon: s => s.zicht >= 2},
+  {k: 'cirkel_m', soort: 'schuif', label: 'Straal van de vage cirkel', min: 10, max: 1000, stap: 5, eenheid: 'm', toon: s => s.zicht === 3},
+  {k: 'ververs_s', soort: 'schuif', label: 'Kijkers krijgen een nieuwe plek', min: 0, max: 600, stap: 10, eenheid: 's', nul: 'steeds',
+   voor: 'elke ', toon: s => s.zicht > 0},
+  {k: 'spoor_kijkers', soort: 'aanuit', label: 'Spoor laten zien', toon: s => s.zicht === 1 || s.zicht === 2},
+  {k: 'spoor_min', soort: 'schuif', label: 'Spoor van de laatste', min: 1, max: 240, stap: 1, eenheid: 'min',
+   toon: s => (s.zicht === 1 || s.zicht === 2) && s.spoor_kijkers},
+  {k: 'zones_kijkers', soort: 'aanuit', label: 'Zones laten zien'},
+  {kop: 'Speelgebied'},
+  {soort: 'grens'},
+  {k: 'grens_actie', soort: 'keuze', label: 'Buiten het speelgebied', opties: ACTIE.map((t, i) => [i, t]), toon: s => !!s.grens},
+  {k: 'grens_wacht_s', soort: 'schuif', label: 'Na', min: 0, max: 120, stap: 5, eenheid: 's buiten', toon: s => !!s.grens},
+  {kop: 'TRANSPORT: zones en snelheid'},
+  {soort: 'zones'},
+  {k: 'max_kmh', soort: 'schuif', label: 'Harder dan', min: 0, max: 50, stap: 1, eenheid: 'km/u', nul: 'uit',
+   uitleg: 'Telt in TRANSPORT als een schok.'},
+  {kop: 'Kijk-link'},
+  {soort: 'link'},
+];
+
+function openInstel() {
+  origineel = JSON.parse(JSON.stringify(data.instelling));
+  concept = JSON.parse(JSON.stringify(data.instelling));
+  $('instel').classList.add('open');
+  bouwInstel();
+}
+function sluitInstel() {
+  $('instel').classList.remove('open');
+  stopTeken();
+  concept = null;
+  laag.concept.clearLayers();
+  if (data) tekenAlles();
+}
+$('bInstel').onclick = openInstel;
+$('bSluit').onclick = sluitInstel;
+$('instel').addEventListener('click', e => { if (e.target.id === 'instel') sluitInstel(); });
+
+function bouwInstel() {
+  const s = concept;
+  let h = '<h2>Instellingen</h2><div class="uitleg" style="color:var(--zacht);font-size:13px">' +
+    'Alleen wie deze spelleider-link heeft, ziet dit. Wijzigingen gelden na <b>Opslaan</b>.</div>';
+  VELDEN.forEach((v, i) => {
+    if (v.toon && !v.toon(s)) return;
+    if (v.kop) { h += '<h3>' + v.kop + '</h3>'; return; }
+    if (v.soort === 'keuze') {
+      h += '<div class="veld"><label>' + v.label + '</label><div class="keuze">' +
+        v.opties.map(o => '<button data-i="' + i + '" data-w="' + o[0] + '" class="' + (s[v.k] === o[0] ? 'gekozen' : '') + '">' + o[1] + '</button>').join('') +
+        '</div>' + (v.uitleg ? '<div class="uitleg">' + v.uitleg + '</div>' : '') + '</div>';
+    } else if (v.soort === 'schuif') {
+      h += '<div class="veld"><label>' + v.label + '<span class="waarde" id="w' + i + '">' + schuifTekst(v, s[v.k]) + '</span></label>' +
+        '<input type="range" data-i="' + i + '" min="' + v.min + '" max="' + v.max + '" step="' + v.stap + '" value="' + s[v.k] + '">' +
+        (v.uitleg ? '<div class="uitleg">' + v.uitleg + '</div>' : '') + '</div>';
+    } else if (v.soort === 'aanuit') {
+      h += '<div class="veld schakel"><label for="c' + i + '">' + v.label + '</label><input type="checkbox" id="c' + i + '" data-i="' + i + '"' +
+        (s[v.k] ? ' checked' : '') + '></div>';
+    } else if (v.soort === 'grens') {
+      const g = s.grens;
+      h += '<div class="veld"><label>' + (g ? (g.soort === 'cirkel' ? 'Cirkel van ' + Math.round(g.r) + ' m' :
+            'Veelhoek met ' + g.punten.length + ' punten') : 'Geen speelgebied') + '</label><div class="knoppen">' +
+        '<button data-actie="cirkel">Cirkel tekenen</button><button data-actie="veelhoek">Veelhoek tekenen</button>' +
+        (g ? '<button data-actie="geengrens">Weghalen</button>' : '') + '</div>' +
+        (g && g.soort === 'cirkel' ? '<label style="margin-top:10px">Straal<span class="waarde" id="wgr">' + Math.round(g.r) + ' m</span></label>' +
+          '<input type="range" id="grensR" min="20" max="3000" step="10" value="' + Math.round(g.r) + '">' : '') +
+        '<div class="uitleg">De koffer reageert hierop in de spellen vanaf firmware gps2; kijkers zien het op de kaart.</div></div>';
+    } else if (v.soort === 'zones') {
+      const zs = s.zones || [];
+      h += '<div class="veld"><div class="knoppen" style="margin-top:0"><button data-actie="zone">+ Zone op de kaart</button></div>';
+      zs.forEach((z, zi) => {
+        h += '<div class="zone"><div class="rij"><input type="text" maxlength="12" data-zone="' + zi + '" data-zk="naam" value="' + esc(z.naam) + '">' +
+          '<select data-zone="' + zi + '" data-zk="soort"><option value="cp"' + (z.soort !== 'eind' ? ' selected' : '') + '>checkpoint</option>' +
+          '<option value="eind"' + (z.soort === 'eind' ? ' selected' : '') + '>eindpost</option></select>' +
+          '<button data-zoneweg="' + zi + '" title="Weg">✕</button></div>' +
+          '<label style="margin-top:6px">Straal<span class="waarde" id="wz' + zi + '">' + z.r + ' m</span></label>' +
+          '<input type="range" min="5" max="200" step="5" value="' + z.r + '" data-zone="' + zi + '" data-zk="r"></div>';
+      });
+      h += '<div class="uitleg">' + (zs.length ? zs.length + ' van hoogstens 20 zones.' : 'Nog geen zones.') +
+        ' De koffer gebruikt ze in TRANSPORT vanaf firmware gps2.</div></div>';
+    } else if (v.soort === 'link') {
+      const url = location.origin + location.pathname + '#k=' + data.kijk_code;
+      h += '<div class="veld"><div class="link" id="kijkLink">' + esc(url) + '</div><div class="knoppen">' +
+        '<button data-actie="kopieer">Kopiëren</button>' + (navigator.share ? '<button data-actie="deel">Delen</button>' : '') +
+        '<button data-actie="nieuwelink">Nieuwe kijk-link</button></div>' +
+        '<div class="uitleg">Iedereen met deze link ziet wat je hierboven kiest. Een nieuwe kijk-link maakt de oude ongeldig.</div></div>';
+    }
+  });
+  $('blad').innerHTML = h;
+  tekenConcept();
+}
+
+function schuifTekst(v, w) { return w === 0 && v.nul ? v.nul : (v.voor || '') + w + ' ' + v.eenheid; }
+
+$('blad').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.i != null && b.dataset.w != null) {
+    const v = VELDEN[+b.dataset.i];
+    concept[v.k] = +b.dataset.w;
+    bouwInstel();
+  } else if (b.dataset.zoneweg != null) {
+    concept.zones.splice(+b.dataset.zoneweg, 1);
+    if (!concept.zones.length) concept.zones = null;
+    bouwInstel();
+  } else if (b.dataset.actie) {
+    actie(b.dataset.actie);
+  }
+});
+$('blad').addEventListener('input', e => {
+  const el = e.target;
+  if (el.dataset.zone != null) {
+    const z = concept.zones[+el.dataset.zone];
+    if (el.dataset.zk === 'r') { z.r = +el.value; $('wz' + el.dataset.zone).textContent = z.r + ' m'; }
+    else if (el.dataset.zk === 'naam') z.naam = el.value.toUpperCase();
+    else if (el.dataset.zk === 'soort') z.soort = el.value;
+    tekenConcept();
+    return;
+  }
+  if (el.id === 'grensR') {
+    concept.grens.r = +el.value;
+    $('wgr').textContent = el.value + ' m';
+    tekenConcept();
+    return;
+  }
+  if (el.dataset.i == null) return;
+  const v = VELDEN[+el.dataset.i];
+  if (v.soort === 'schuif') {
+    concept[v.k] = +el.value;
+    $('w' + el.dataset.i).textContent = schuifTekst(v, concept[v.k]);
+  } else if (v.soort === 'aanuit') {
+    concept[v.k] = el.checked;
+    bouwInstel();
+  }
+});
+$('blad').addEventListener('change', e => { if (e.target.dataset.zk === 'soort') bouwInstel(); });
+
+function tekenConcept() {
+  laag.concept.clearLayers();
+  laag.grens.clearLayers();
+  laag.zones.clearLayers();
+  if (!concept) return;
+  tekenGrens(laag.concept, concept.grens, true);
+  tekenZones(laag.concept, concept.zones);
+}
+
+async function actie(a) {
+  if (a === 'kopieer') {
+    try { await navigator.clipboard.writeText($('kijkLink').textContent); toast('Gekopieerd'); } catch (e) { toast('Kopiëren lukt hier niet'); }
+  } else if (a === 'deel') {
+    navigator.share({title: 'RAF Challenge case', url: $('kijkLink').textContent}).catch(() => {});
+  } else if (a === 'nieuwelink') {
+    if (!confirm('Een nieuwe kijk-link maken? De oude link werkt daarna niet meer.')) return;
+    try { data = await rpc('koffer_instel', {p_leider_code: code, p_instelling: {nieuwe_kijk: true}}); tekenAlles(); bouwInstel(); toast('Nieuwe kijk-link'); }
+    catch (e) { toast(e.message); }
+  } else if (a === 'geengrens') {
+    concept.grens = null;
+    bouwInstel();
+  } else if (a === 'cirkel' || a === 'veelhoek' || a === 'zone') {
+    if (a === 'zone' && (concept.zones || []).length >= 20) return toast('Hoogstens 20 zones');
+    startTeken(a);
+  }
+}
+
+// Tekenen op de kaart: het instellingenblad gaat even weg, een balk bovenaan zegt wat je doet
+function startTeken(soort) {
+  teken = {soort, punten: []};
+  $('instel').classList.remove('open');
+  document.querySelector('.vast').style.display = 'none';
+  $('tekenbalk').classList.add('open');
+  zetTekenbalk();
+}
+function zetTekenbalk() {
+  const t = teken;
+  $('tekenUitleg').textContent = t.soort === 'cirkel' ? 'Tik op het midden van het speelgebied.' :
+    t.soort === 'zone' ? 'Tik waar de zone moet komen.' :
+    'Tik de hoeken van het speelgebied aan (' + t.punten.length + ' punten, minstens 3).';
+  $('tekenKnoppen').innerHTML = (t.soort === 'veelhoek' ? '<button id="tUndo"' + (t.punten.length ? '' : ' disabled') + '>Laatste weg</button>' +
+    '<button id="tKlaar" class="hoofd"' + (t.punten.length >= 3 ? '' : ' disabled') + '>Klaar</button>' : '') + '<button id="tStop">Annuleren</button>';
+  const u = $('tUndo'), k = $('tKlaar');
+  if (u) u.onclick = () => { t.punten.pop(); tekenTekenen(); zetTekenbalk(); };
+  if (k) k.onclick = () => { concept.grens = {soort: 'veelhoek', punten: t.punten.map(p => [+p[0].toFixed(6), +p[1].toFixed(6)])}; stopTeken(true); };
+  $('tStop').onclick = () => stopTeken(true);
+}
+function tekenTekenen() {
+  tekenConcept();
+  if (teken && teken.soort === 'veelhoek') tekenGrens(laag.concept, {soort: 'veelhoek', punten: teken.punten}, true);
+}
+function stopTeken(terug) {
+  if (!teken) return;
+  teken = null;
+  $('tekenbalk').classList.remove('open');
+  document.querySelector('.vast').style.display = '';
+  if (terug && concept) { $('instel').classList.add('open'); bouwInstel(); }
+}
+kaart.on('click', e => {
+  if (!teken) return;
+  const p = [+e.latlng.lat.toFixed(6), +e.latlng.lng.toFixed(6)];
+  if (teken.soort === 'cirkel') {
+    concept.grens = {soort: 'cirkel', lat: p[0], lon: p[1], r: (concept.grens && concept.grens.r) || 300};
+    stopTeken(true);
+  } else if (teken.soort === 'zone') {
+    concept.zones = concept.zones || [];
+    const n = concept.zones.filter(z => z.soort !== 'eind').length + 1;
+    concept.zones.push({naam: 'CP' + n, lat: p[0], lon: p[1], r: 25, soort: 'cp'});
+    stopTeken(true);
+  } else {
+    if (teken.punten.length >= 60) return toast('Hoogstens 60 punten');
+    teken.punten.push(p);
+    tekenTekenen();
+    zetTekenbalk();
+  }
+});
+
+$('bOpslaan').onclick = async () => {
+  if (!concept) return;
+  const wijz = {};
+  Object.keys(concept).forEach(k => {
+    if (['bijgewerkt', 'versie', 'koffer_id'].includes(k)) return;
+    if (JSON.stringify(concept[k]) !== JSON.stringify(origineel[k])) wijz[k] = concept[k];
+  });
+  if (!Object.keys(wijz).length) { sluitInstel(); return toast('Niets veranderd'); }
+  $('bOpslaan').disabled = true;
+  // Wanneer de koffer het hoort, hangt af van hoe hij NU meldt (de oude instelling): volgt hij, dan binnen zijn
+  // interval; in rust pas bij zijn volgende melding (hoogstens een half uur), of meteen als er een spel opengaat.
+  const raaktKoffer = ['grens', 'zones', 'max_kmh', 'volgen', 'interval_s'].some(k => k in wijz);
+  const nuVolgt = volgtNu({rol: 'leider', instelling: origineel, spel: data.spel});
+  const wanneer = nuVolgt ? 'binnen ' + origineel.interval_s + ' s' :
+    'bij zijn volgende melding (in rust hoogstens een half uur, of meteen als er een spel opengaat)';
+  try {
+    data = await rpc('koffer_instel', {p_leider_code: code, p_instelling: wijz});
+    sluitInstel();
+    toast('Opgeslagen' + (raaktKoffer ? ': de koffer hoort het ' + wanneer : ''));
+  } catch (e) {
+    toast('Niet opgeslagen: ' + e.message);
+  } finally {
+    $('bOpslaan').disabled = false;
+  }
+};
+
+tekenStatus();
+</script>
+</body>
+</html>
