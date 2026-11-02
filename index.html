@@ -90,6 +90,10 @@ select{font:inherit;padding:8px;border-radius:8px;border:1px solid var(--rand);b
 .leeg{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:1000;background:var(--bg);
   padding:24px;text-align:center}
 .leeg.open{display:flex}.leeg div{max-width:420px}
+.volg{margin-top:10px}
+.volg .kopje{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--zacht);margin-bottom:6px}
+.volg .keuze button{padding:8px 6px}
+button.bevestig,.keuze button.bevestig{background:var(--geel);border-color:var(--geel);color:#000;font-weight:700}
 </style>
 </head>
 <body>
@@ -100,6 +104,11 @@ select{font:inherit;padding:8px;border-radius:8px;border:1px solid var(--rand);b
 <div class="onder"><div class="kaartje">
   <p id="melding" class="melding" hidden></p>
   <dl class="regels" id="regels"></dl>
+  <!-- alleen de spelleider: volgen aan of uit, meteen, zonder Instellingen (Rafael, 2 nov 2026) -->
+  <div class="volg" id="volg" hidden>
+    <div class="kopje"><span>Plek doorgeven</span><span id="volgInfo"></span></div>
+    <div class="keuze" id="volgKeuze"><button data-volg="0">Uit</button><button data-volg="1">Tijdens een spel</button><button data-volg="2">Altijd</button></div>
+  </div>
   <div class="knoppen">
     <button id="bVolg" class="aan" title="De kaart houdt de koffer in beeld">Volg koffer</button>
     <button id="bIk" title="Laat je eigen plek zien (de pagina vraagt toestemming)">Mijn plek</button>
@@ -138,6 +147,9 @@ const hash = new URLSearchParams(location.hash.slice(1));
 const code = hash.get('l') || hash.get('k') || '';
 let data = null, fout = '', volgKoffer = true, eersteBeeld = true, ikPlek = null, ikWatch = null;
 let concept = null, origineel = null, teken = null, laatsteHaal = 0, bezig = false;
+// Volgen aan/uit op de kaart en plekken wissen (2 nov 2026). 'wijziging' telt elke verandering die de spelleider
+// verstuurde: een ophaalbeurt die daarvoor begon, mag de nieuwe stand niet meer overschrijven.
+let volgBezig = false, volgUitTot = 0, wisTot = 0, wijziging = 0;
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -192,6 +204,15 @@ const duur = s => {
   return [u && u + ' uur', m && m + ' min', r && r + ' s'].filter(Boolean).join(' ');
 };
 const afstand = m => m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(m < 10000 ? 2 : 1).replace('.', ',') + ' km';
+// Een tijdstip (Unix-seconden) als 'vandaag 14:11' of '1 nov 14:11'; 'vandaag' volgens de klok van de server.
+const MAAND = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+const tweecijfers = n => (n < 10 ? '0' : '') + n;
+function tijdstip(e, metDag = true) {
+  const d = new Date(e * 1000), nu = new Date((data && data.nu ? data.nu : Date.now() / 1000) * 1000);
+  const hm = tweecijfers(d.getHours()) + ':' + tweecijfers(d.getMinutes());
+  if (!metDag) return hm;
+  return (d.toDateString() === nu.toDateString() ? 'vandaag' : d.getDate() + ' ' + MAAND[d.getMonth()]) + ' ' + hm;
+}
 
 // Afstand tot de rand van het speelgebied (m): binnen positief, buiten negatief. Vlak benaderd, zoals de koffer.
 function randAfstand(g, lat, lon) {
@@ -228,7 +249,10 @@ async function haal() {
   if (bezig || !code) return;
   bezig = true;
   try {
-    data = await rpc('koffer_kaart', {p_code: code, p_spoor_min: 60});
+    const w = wijziging;
+    const d = await rpc('koffer_kaart', {p_code: code, p_spoor_min: 60});
+    if (w !== wijziging) return;  // intussen iets veranderd: het antwoord daarvan is nieuwer
+    data = d;
     fout = '';
     laatsteHaal = Date.now();
     tekenAlles();
@@ -340,7 +364,7 @@ function tekenStatus() {
       (d.pos.kmh > 1 ? ' · ' + d.pos.kmh.toFixed(1).replace('.', ',') + ' km/u' : '') : 'nog geen plek']);
     regels.push(['Koffer', (d.accu != null ? 'accu ' + d.accu + ' %' : '') + (d.sats != null ? ' · ' + d.sats + ' satellieten' : '') +
       (d.fix === false ? ' · geen GPS-fix' : '')]);
-    regels.push(['Volgen', ['uit', 'tijdens een spel', 'altijd'][ins.volgen] + ', elke ' + duur(ins.interval_s)]);
+    // 'Volgen' staat niet meer als regel: de knoppen eronder (tekenVolg) tonen het en zetten het meteen om
     regels.push(['Kijkers', ZICHT[ins.zicht] + (ins.zicht >= 2 ? ' (' + duur(ins.vertraging_s) + ')' : '') +
       (ins.zicht === 3 ? ', cirkel ' + ins.cirkel_m + ' m' : '')]);
     if (ins.grens && d.pos) {
@@ -365,8 +389,68 @@ function tekenStatus() {
   m.hidden = !fout;
   m.textContent = fout ? 'Even geen verbinding: ' + fout : '';
   $('bInstel').hidden = d.rol !== 'leider';
+  tekenVolg();
 }
 setInterval(() => { if (data) tekenStatus(); }, 1000);
+
+// ---------------------------------------------------------------- volgen aan/uit (alleen de spelleider)
+// Rafael, 2 nov 2026: "zelf kunnen instellen of ik het uit of aan wil zetten en of ik de data wil wissen".
+// Drie knoppen op de kaart zelf, die meteen gelden. De knoppen worden nooit opnieuw gebouwd (alleen hun klasse en
+// tekst), anders verdwijnt een tik die net valt als de stand elke seconde wordt bijgewerkt.
+const plekkenTekst = n => n + (n === 1 ? ' plek' : ' plekken');
+function tekenVolg() {
+  const d = data, leider = !!d && d.rol === 'leider' && !!d.instelling;
+  $('volg').hidden = !leider;
+  if (!leider) return;
+  const ins = d.instelling, bevestig = Date.now() < volgUitTot;
+  document.querySelectorAll('#volgKeuze button').forEach(b => {
+    const w = +b.dataset.volg;
+    const tekst = w === 0 ? (bevestig ? 'Nog eens: uit' : 'Uit') : w === 1 ? 'Tijdens een spel' : 'Altijd';
+    if (b.textContent !== tekst) b.textContent = tekst;
+    b.classList.toggle('gekozen', w === ins.volgen);
+    b.classList.toggle('bevestig', w === 0 && bevestig);
+    b.disabled = volgBezig;
+  });
+  const info = (ins.volgen ? 'elke ' + duur(ins.interval_s) : 'staat uit') +
+    (d.plekken == null ? '' : ' · ' + (d.plekken ? plekkenTekst(d.plekken) + ' bewaard' : 'geen plekken bewaard'));
+  if ($('volgInfo').textContent !== info) $('volgInfo').textContent = info;
+}
+// Wanneer de koffer een nieuwe instelling hoort: hangt af van hoe hij NU meldt (de oude instelling). Volgt hij, dan
+// binnen zijn interval; in rust pas bij zijn volgende melding (hoogstens een half uur), of meteen als er een spel opengaat.
+function wanneerKoffer(ins, spel) {
+  return volgtNu({rol: 'leider', instelling: ins, spel}) ? 'binnen ' + duur(ins.interval_s) :
+    'bij zijn volgende melding (in rust hoogstens een half uur, of meteen als er een spel opengaat)';
+}
+$('volgKeuze').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-volg]');
+  if (!b || !data || data.rol !== 'leider' || volgBezig) return;
+  const w = +b.dataset.volg, oud = data.instelling;
+  if (w === oud.volgen) { volgUitTot = 0; return tekenVolg(); }
+  // Midden in een spel uitzetten = de kijkers zien de koffer niet meer bewegen: eerst nog een tik
+  if (w === 0 && data.spel && Date.now() >= volgUitTot) {
+    volgUitTot = Date.now() + 4000;
+    tekenVolg();
+    setTimeout(tekenVolg, 4100);
+    return toast('Er staat een spel open. Tik nog eens op Uit om het volgen te stoppen.');
+  }
+  volgUitTot = 0;
+  volgBezig = true;
+  tekenVolg();
+  const wanneer = wanneerKoffer(oud, data.spel);
+  try {
+    wijziging++;
+    data = await rpc('koffer_instel', {p_leider_code: code, p_instelling: {volgen: w}});
+    laatsteHaal = Date.now();
+    tekenAlles();
+    toast(w === 0 ? 'Volgen uit: vanaf nu wordt er geen plek meer bewaard. De koffer stopt met doorgeven ' + wanneer + '.'
+                  : 'Volgen ' + (w === 1 ? 'tijdens een spel' : 'altijd') + ': de koffer hoort het ' + wanneer + '.');
+  } catch (err) {
+    toast('Niet gelukt: ' + err.message);
+  } finally {
+    volgBezig = false;
+    tekenVolg();
+  }
+});
 
 function zetVolg(aan) {
   volgKoffer = aan;
@@ -398,6 +482,10 @@ $('bIk').onclick = () => {
 function toast(t) {
   const el = $('toast');
   el.textContent = t;
+  // boven het kaartje (dat is met de volgknoppen hoger geworden); in Instellingen de vaste plek boven de knoppenbalk
+  const kaartje = document.querySelector('.kaartje');
+  el.style.bottom = $('instel').classList.contains('open') || !kaartje ? '' :
+    Math.max(150, Math.round(innerHeight - kaartje.getBoundingClientRect().top + 10)) + 'px';
   el.style.display = 'block';
   clearTimeout(toast.t);
   toast.t = setTimeout(() => { el.style.display = 'none'; }, Math.max(3200, t.length * 60));
@@ -410,6 +498,7 @@ const VELDEN = [
    uitleg: 'Tijdens een spel = als DEFUSE, TRANSPORT of RTT HUNT open staat op de koffer.'},
   {k: 'interval_s', soort: 'schuif', label: 'Plek doorgeven elke', min: 5, max: 300, stap: 5, fmt: duur,
    uitleg: 'Vaker = meer 4G-data (ongeveer 1-2 MB per uur bij 15 s).'},
+  {soort: 'plekken'},
   {kop: 'Wat kijkers zien'},
   {k: 'zicht', soort: 'keuze', label: 'Met de kijk-link', opties: [[1, 'Live'], [2, 'Vertraagd'], [3, 'Vaag'], [0, 'Niets']],
    uitleg: 'Vaag = een cirkel waar de koffer ergens in ligt; hij blijft staan tot de koffer eruit loopt.'},
@@ -492,6 +581,14 @@ function bouwInstel() {
       h += '<div class="uitleg">' + (zs.length ? zs.length + ' van hoogstens 20 zones.' : 'Nog geen zones.') +
         ' TRANSPORT neemt ze als route als op de koffer <b>Bron: GPS</b> aan staat (routescherm, toets 6): de ' +
         'checkpoints in deze volgorde, de eindpost als eindzone.</div></div>';
+    } else if (v.soort === 'plekken') {
+      // Wissen gebeurt meteen (twee tikken), niet pas bij Opslaan: het is geen instelling maar opruimen
+      const n = data.plekken;
+      h += '<div class="veld"><label>Bewaarde plekken</label><div id="plekTekst">' + plekkenUitleg(data) + '</div>' +
+        (n > 0 ? '<div class="knoppen"><button id="bWis" data-actie="wis">Alle plekken wissen</button></div>' : '') +
+        '<div class="uitleg">Wissen gebeurt meteen (niet pas bij Opslaan) en haalt alles weg: de plekken, het spoor en ' +
+        'de vage cirkel. Staat volgen aan en is er ' +
+        'een spel open, dan komen er meteen nieuwe plekken bij. Plekken ouder dan 30 dagen gaan vanzelf weg.</div></div>';
     } else if (v.soort === 'link') {
       const url = location.origin + location.pathname + '#k=' + data.kijk_code;
       h += '<div class="veld"><div class="link" id="kijkLink">' + esc(url) + '</div><div class="knoppen">' +
@@ -501,7 +598,25 @@ function bouwInstel() {
     }
   });
   $('blad').innerHTML = h;
+  tekenWisKnop();
   tekenConcept();
+}
+
+function plekkenUitleg(d) {
+  const n = d.plekken;
+  if (n == null) return 'Niet bekend.';
+  if (!n) return 'Geen plekken bewaard.';
+  const zelfdeDag = new Date(d.plekken_van * 1000).toDateString() === new Date(d.plekken_tot * 1000).toDateString();
+  return plekkenTekst(n) + ', van ' + tijdstip(d.plekken_van) + ' tot ' + tijdstip(d.plekken_tot, !zelfdeDag) + '.';
+}
+// De wisknop vraagt een tweede tik binnen 4 s. Alleen de knop zelf verandert: het blad opnieuw bouwen zou een
+// schuif onder iemands vinger weghalen.
+function tekenWisKnop() {
+  const b = $('bWis');
+  if (!b) return;
+  const bevestig = Date.now() < wisTot;
+  b.textContent = bevestig ? 'Tik nog eens: alles wissen' : 'Alle plekken wissen';
+  b.classList.toggle('bevestig', bevestig);
 }
 
 function schuifTekst(v, w) {
@@ -569,6 +684,27 @@ async function actie(a) {
     if (!confirm('Een nieuwe kijk-link maken? De oude link werkt daarna niet meer.')) return;
     try { data = await rpc('koffer_instel', {p_leider_code: code, p_instelling: {nieuwe_kijk: true}}); tekenAlles(); bouwInstel(); toast('Nieuwe kijk-link'); }
     catch (e) { toast(e.message); }
+  } else if (a === 'wis') {
+    if (Date.now() >= wisTot) {
+      wisTot = Date.now() + 4000;
+      tekenWisKnop();
+      setTimeout(tekenWisKnop, 4100);
+      return;
+    }
+    wisTot = 0;
+    $('bWis').disabled = true;
+    try {
+      wijziging++;
+      const r = await rpc('koffer_wis', {p_leider_code: code});
+      data = r;
+      laatsteHaal = Date.now();
+      tekenAlles();
+      if (concept) bouwInstel();
+      toast(plekkenTekst(r.gewist || 0) + ' gewist');
+    } catch (e) {
+      toast('Niet gewist: ' + e.message);
+      if ($('bWis')) { $('bWis').disabled = false; tekenWisKnop(); }
+    }
   } else if (a === 'geengrens') {
     concept.grens = null;
     bouwInstel();
@@ -637,13 +773,10 @@ $('bOpslaan').onclick = async () => {
   });
   if (!Object.keys(wijz).length) { sluitInstel(); return toast('Niets veranderd'); }
   $('bOpslaan').disabled = true;
-  // Wanneer de koffer het hoort, hangt af van hoe hij NU meldt (de oude instelling): volgt hij, dan binnen zijn
-  // interval; in rust pas bij zijn volgende melding (hoogstens een half uur), of meteen als er een spel opengaat.
   const raaktKoffer = ['grens', 'zones', 'max_kmh', 'volgen', 'interval_s'].some(k => k in wijz);
-  const nuVolgt = volgtNu({rol: 'leider', instelling: origineel, spel: data.spel});
-  const wanneer = nuVolgt ? 'binnen ' + duur(origineel.interval_s) :
-    'bij zijn volgende melding (in rust hoogstens een half uur, of meteen als er een spel opengaat)';
+  const wanneer = wanneerKoffer(origineel, data.spel);
   try {
+    wijziging++;
     data = await rpc('koffer_instel', {p_leider_code: code, p_instelling: wijz});
     sluitInstel();
     toast('Opgeslagen' + (raaktKoffer ? ': de koffer hoort het ' + wanneer : ''));

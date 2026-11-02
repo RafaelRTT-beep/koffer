@@ -17,7 +17,8 @@ const instelling = {grens: null, zicht: 1, zones: null, versie: 3, volgen: 1, ma
 const leider = () => ({rol: 'leider', naam: 'RAF Challenge case', kijk_code: 'kijkcode1234', nu, gezien: nu - 8, spel: 'TRANSPORT',
   fase: 'SPEELT', accu: 87, sats: 9, fix: true, instelling: JSON.parse(JSON.stringify(instelling)),
   pos: {lat: 51.9054, lon: 4.4667, t: nu - 9, nauw: 6, kmh: 4.2, koers: 90, sats: 9},
-  spoor: [[51.9042, 4.4650, nu - 120], [51.9048, 4.4660, nu - 60], [51.9054, 4.4667, nu - 9]]});
+  spoor: [[51.9042, 4.4650, nu - 120], [51.9048, 4.4660, nu - 60], [51.9054, 4.4667, nu - 9]],
+  plekken: 3, plekken_van: nu - 120, plekken_tot: nu - 9});
 const kijkers = {
   live: {rol: 'kijker', naam: 'RAF Challenge case', zicht: 1, nu, gezien: nu - 8, spel: 'TRANSPORT', fase: 'SPEELT', vertraging: 0,
     ververs: 0, pos: {lat: 51.9054, lon: 4.4667, t: nu - 9}, spoor: [], grens: {soort: 'cirkel', lat: 51.9042, lon: 4.4660, r: 400},
@@ -30,7 +31,7 @@ const kijkers = {
   weg: {rol: 'kijker', naam: 'RAF Challenge case', zicht: 1, nu, gezien: nu - 3000, spel: '', fase: null, vertraging: 0, ververs: 0,
     pos: null, spoor: [], grens: null, zones: null},
 };
-const instelVerzoeken = [], tegelReferers = new Set(), vreemd = [];
+const instelVerzoeken = [], wisVerzoeken = [], tegelReferers = new Set(), vreemd = [];
 
 const SOORT = {'.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.css': 'text/css', '.png': 'image/png'};
 const server = http.createServer((q, r) => {
@@ -44,7 +45,7 @@ const server = http.createServer((q, r) => {
 (async () => {
   await new Promise(k => server.listen(8765, k));
   const browser = await chromium.launch();
-  const ctx = await browser.newContext({viewport: {width: 390, height: 844}, deviceScaleFactor: 2,
+  const ctx = await browser.newContext({viewport: {width: 390, height: 844}, deviceScaleFactor: 2, timezoneId: 'Europe/Amsterdam',
     geolocation: {latitude: 51.9032, longitude: 4.4640}, permissions: ['geolocation']});
   let soort = 'live';
   const leiderNu = leider();
@@ -77,6 +78,13 @@ const server = http.createServer((q, r) => {
       leiderNu.instelling.bijgewerkt = new Date(leiderNu.nu * 1000).toISOString().replace(/\.(\d{3})Z$/, '.$1456+00:00');
       return route.fulfill({status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(leiderNu)});
     }
+    if (fn === 'koffer_wis') {  // zoals de echte functie: alles weg, en het antwoord van koffer_kaart plus "gewist"
+      wisVerzoeken.push(body);
+      if (body.p_leider_code !== 'leidercode-xyz') return route.fulfill({status: 403, headers: cors, body: '{"code":"28000"}'});
+      const n = leiderNu.plekken;
+      Object.assign(leiderNu, {plekken: 0, plekken_van: null, plekken_tot: null, pos: null, spoor: []});
+      return route.fulfill({status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({...leiderNu, gewist: n})});
+    }
     route.fulfill({status: 404, headers: cors, body: '{}'});
   });
   const page = await ctx.newPage();
@@ -94,6 +102,7 @@ const server = http.createServer((q, r) => {
   t('kijker live: grens en zones (ALFA, EIND) op de kaart', (await page.$$('.zone-label')).length === 2 &&
     (await page.$$('path.leaflet-interactive')).length >= 3);
   t('kijker: geen instellingen', await page.$eval('#bInstel', e => e.hidden));
+  t('kijker: geen knoppen om het volgen om te zetten', await page.$eval('#volg', e => e.hidden));
   await page.click('#bIk');
   await page.waitForFunction(() => document.getElementById('regels').textContent.includes('Afstand'));
   t('mijn plek: afstand tot de koffer', /Afstand.*m/.test(await tekst('#regels')), await tekst('#regels'));
@@ -130,8 +139,11 @@ const server = http.createServer((q, r) => {
   await page.goto('about:blank');
   await page.goto('http://localhost:8765/#l=leidercode-xyz');
   await page.waitForFunction(() => document.getElementById('pil').textContent.includes('SPELLEIDER'));
-  t('leider: de stand van de koffer', /accu 87 %.*9 satellieten/.test(await tekst('#regels')) &&
-    (await tekst('#regels')).includes('tijdens een spel, elke 15 s'), await tekst('#regels'));
+  t('leider: de stand van de koffer', /accu 87 %.*9 satellieten/.test(await tekst('#regels')), await tekst('#regels'));
+  t('leider: Plek doorgeven op de kaart zelf, "Tijdens een spel" gekozen, elke 15 s, 3 plekken bewaard',
+    !(await page.$eval('#volg', e => e.hidden)) &&
+    await page.$eval('#volgKeuze button.gekozen', e => e.textContent) === 'Tijdens een spel' &&
+    (await tekst('#volgInfo')) === 'elke 15 s · 3 plekken bewaard', await tekst('#volgInfo'));
   t('leider: spoor en nauwkeurigheid op de kaart', (await page.$$('path.leaflet-interactive')).length >= 2);
   leiderNu.instelling.zicht = 2;  // vertraagd: de vertraging staat in minuten en seconden in de stand
   leiderNu.instelling.vertraging_s = 90;
@@ -158,7 +170,7 @@ const server = http.createServer((q, r) => {
   await page.waitForSelector('#instel.open');
   t('leider: instellingen open, cirkelstraal pas bij Vaag', !(await page.$('text=Straal van de vage cirkel')));
   await page.screenshot({path: path.join(UIT, 'leider_instellingen.png')});
-  await page.click('.keuze button:has-text("Vaag")');
+  await page.click('#blad .keuze button:has-text("Vaag")');
   t('leider: Vaag gekozen = cirkelstraal en vertraging verschijnen', !!(await page.$('text=Straal van de vage cirkel')) &&
     !!(await page.$('text=Vertraging')));
   // Tijden in seconden en minuten (Rafael, 2 nov 2026: "met instellingen op de kaart etc moeten secondes minuten zijn")
@@ -223,7 +235,7 @@ const server = http.createServer((q, r) => {
   t('leider in rust: niet OFFLINE, "in rust, meldt zich elk half uur"', !(await tekst('#pil')).includes('OFFLINE'),
     await tekst('#pil') + ' | ' + await tekst('#regels'));
   await page.click('#bInstel');
-  await page.click('.keuze button:has-text("Altijd")');
+  await page.click('#blad .keuze button:has-text("Altijd")');
   await page.click('#bOpslaan');
   await page.waitForFunction(() => document.getElementById('toast').textContent.includes('Opgeslagen'));
   t('opslaan in rust: "hoogstens een half uur, of meteen als er een spel opengaat"',
@@ -244,6 +256,86 @@ const server = http.createServer((q, r) => {
   await page.evaluate(() => haal());
   await page.waitForFunction(() => document.getElementById('pil').textContent.includes('OFFLINE'));
   t('volgt hij maar zwijgt hij 10 min: OFFLINE', (await tekst('#regels')).includes('niet verbonden'), await tekst('#regels'));
+
+  // 4c. Volgen aan/uit op de kaart zelf, en plekken wissen (Rafael, 2 nov 2026: "zelf kunnen instellen of ik het uit
+  // of aan wil zetten en of ik de data wil wissen"). Een spel loopt: uitzetten vraagt een tweede tik.
+  Object.assign(leiderNu, {spel: 'DEFUSE', fase: 'SPEELT', nu: nu + 1900, gezien: nu + 1895, plekken: 3,
+    plekken_van: nu + 100, plekken_tot: nu + 1890, pos: {lat: 51.9054, lon: 4.4667, t: nu + 1890, nauw: 6, kmh: 0, koers: 0, sats: 9}});
+  leiderNu.instelling.volgen = 1;
+  await page.evaluate(() => haal());
+  const gekozen = () => page.$eval('#volgKeuze button.gekozen', e => e.dataset.volg).catch(() => null);
+  await page.waitForFunction(() => (document.querySelector('#volgKeuze button.gekozen') || {}).textContent === 'Tijdens een spel');
+  const v0 = instelVerzoeken.length;
+  await page.click('#volgKeuze button[data-volg="0"]');
+  t('volgen uit tijdens een spel: eerst "Nog eens: uit", nog geen verzoek', instelVerzoeken.length === v0 &&
+    await page.$eval('#volgKeuze button[data-volg="0"]', e => e.textContent) === 'Nog eens: uit' &&
+    (await tekst('#toast')).includes('Tik nog eens op Uit'), await tekst('#toast'));
+  await page.screenshot({path: path.join(UIT, 'leider_volg_bevestig.png')});
+  t('de melding staat boven het kaartje, niet erover', await page.evaluate(() =>
+    document.getElementById('toast').getBoundingClientRect().bottom <= document.querySelector('.kaartje').getBoundingClientRect().top));
+  await page.click('#volgKeuze button[data-volg="0"]');
+  await page.waitForFunction(() => (document.querySelector('#volgKeuze button.gekozen') || {}).dataset.volg === '0');
+  t('volgen uit: alleen {volgen: 0} gestuurd', instelVerzoeken.length === v0 + 1 &&
+    JSON.stringify(instelVerzoeken[v0].p_instelling) === '{"volgen":0}' && instelVerzoeken[v0].p_leider_code === 'leidercode-xyz',
+    JSON.stringify(instelVerzoeken.slice(v0)));
+  t('volgen uit: de melding zegt dat er geen plek meer bewaard wordt, en "staat uit"',
+    (await tekst('#toast')).includes('geen plek meer bewaard') && (await tekst('#volgInfo')).startsWith('staat uit'),
+    await tekst('#toast') + ' | ' + await tekst('#volgInfo'));
+  await page.click('#volgKeuze button[data-volg="1"]');  // aanzetten: meteen, zonder tweede tik
+  await page.waitForFunction(() => (document.querySelector('#volgKeuze button.gekozen') || {}).dataset.volg === '1');
+  t('volgen weer aan: in één tik {volgen: 1}', instelVerzoeken.length === v0 + 2 &&
+    JSON.stringify(instelVerzoeken[v0 + 1].p_instelling) === '{"volgen":1}', JSON.stringify(instelVerzoeken.slice(v0)));
+  leiderNu.spel = ''; leiderNu.fase = null;  // geen spel open: uit in één tik
+  await page.evaluate(() => haal());
+  await page.waitForFunction(() => document.getElementById('regels').textContent.includes('geen spel open'));
+  await page.click('#volgKeuze button[data-volg="0"]');
+  await page.waitForFunction(() => (document.querySelector('#volgKeuze button.gekozen') || {}).dataset.volg === '0');
+  t('zonder spel: uit in één tik', instelVerzoeken.length === v0 + 3, String(instelVerzoeken.length - v0));
+  await page.click('#volgKeuze button[data-volg="1"]');
+  await page.waitForFunction(() => (document.querySelector('#volgKeuze button.gekozen') || {}).dataset.volg === '1');
+  // een ophaalbeurt die al liep toen de spelleider iets veranderde, mag de nieuwe stand niet terugzetten
+  const stale = await page.evaluate(async () => {
+    while (bezig) await new Promise(k => setTimeout(k, 20));  // geen ophaalbeurt van de lus ertussen
+    const echt = window.fetch;
+    let los = null;
+    window.fetch = (u, o) => /koffer_kaart/.test(u) ? new Promise(k => { los = () => k(echt(u, o)); }) : echt(u, o);
+    const h = haal();               // vraagt de stand (volgen 1 bij de nagebootste server) en blijft hangen tot los()
+    window.fetch = echt;
+    if (!los) return 'haal() vroeg niets op';
+    wijziging++;                    // intussen koos de spelleider 'Altijd' en kwam dat antwoord al binnen
+    data.instelling.volgen = 2;
+    los();
+    await h;
+    return data.instelling.volgen;
+  });
+  t('een oud antwoord overschrijft een nieuwe keuze niet', stale === 2, String(stale));
+  await page.evaluate(() => { data.instelling.volgen = 1; haal(); });
+  // Plekken wissen in Instellingen: twee tikken binnen 4 s
+  await page.click('#bInstel');
+  await page.waitForSelector('#instel.open');
+  t('instellingen: hoeveel plekken bewaard, van wanneer tot wanneer (vandaag 01:41 tot 02:11)',
+    (await tekst('#plekTekst')) === '3 plekken, van vandaag 01:41 tot 02:11.', await tekst('#plekTekst'));
+  await page.click('#bWis');
+  t('wissen: de eerste tik vraagt een tweede, nog geen verzoek', wisVerzoeken.length === 0 &&
+    (await tekst('#bWis')) === 'Tik nog eens: alles wissen');
+  await page.screenshot({path: path.join(UIT, 'leider_wissen_bevestig.png')});
+  await page.waitForTimeout(4300);
+  t('wissen: na 4 s weer gewoon', (await tekst('#bWis')) === 'Alle plekken wissen' && wisVerzoeken.length === 0, await tekst('#bWis'));
+  await page.click('#bWis');
+  await page.click('#bWis');
+  await page.waitForFunction(() => document.getElementById('plekTekst').textContent === 'Geen plekken bewaard.');
+  t('wissen: twee tikken = koffer_wis met de leider-code', wisVerzoeken.length === 1 &&
+    wisVerzoeken[0].p_leider_code === 'leidercode-xyz', JSON.stringify(wisVerzoeken));
+  t('wissen: "3 plekken gewist", geen wisknop meer', (await tekst('#toast')).includes('3 plekken gewist') && !(await page.$('#bWis')),
+    await tekst('#toast'));
+  await page.screenshot({path: path.join(UIT, 'leider_gewist.png')});
+  await page.click('#bSluit');
+  await page.waitForFunction(() => !document.getElementById('instel').classList.contains('open'));
+  t('na wissen: geen koffer op de kaart, "geen plekken bewaard"', !(await page.$('.koffer-ico')) &&
+    (await tekst('#volgInfo')).endsWith('geen plekken bewaard') && (await tekst('#regels')).includes('nog geen plek'),
+    await tekst('#volgInfo') + ' | ' + await tekst('#regels'));
+  t('de kaart past op een telefoon: de onderkant van het kaartje in beeld', await page.$eval('.kaartje', e => {
+    const r = e.getBoundingClientRect(); return r.bottom <= innerHeight && r.top > 0; }));
 
   // 5. Zonder code, 6. een code die niet werkt
   const p2 = await ctx.newPage();
