@@ -399,7 +399,7 @@ function toast(t) {
 const VELDEN = [
   {kop: 'Volgen'},
   {k: 'volgen', soort: 'keuze', label: 'Wanneer geeft de koffer zijn plek door', opties: [[1, 'Tijdens een spel'], [2, 'Altijd'], [0, 'Uit']],
-   uitleg: 'Tijdens een spel = als DEFUSE of TRANSPORT open staat op de koffer.'},
+   uitleg: 'Tijdens een spel = als DEFUSE, TRANSPORT of RTT HUNT open staat op de koffer.'},
   {k: 'interval_s', soort: 'schuif', label: 'Plek doorgeven elke', min: 5, max: 300, stap: 5, eenheid: 's',
    uitleg: 'Vaker = meer 4G-data (ongeveer 1-2 MB per uur bij 15 s).'},
   {kop: 'Wat kijkers zien'},
@@ -468,7 +468,7 @@ function bouwInstel() {
         (g ? '<button data-actie="geengrens">Weghalen</button>' : '') + '</div>' +
         (g && g.soort === 'cirkel' ? '<label style="margin-top:10px">Straal<span class="waarde" id="wgr">' + Math.round(g.r) + ' m</span></label>' +
           '<input type="range" id="grensR" min="20" max="3000" step="10" value="' + Math.round(g.r) + '">' : '') +
-        '<div class="uitleg">Geldt in DEFUSE, TRANSPORT en VOSSENJACHT (de regels van het moment dat het spel start). ' +
+        '<div class="uitleg">Geldt in DEFUSE, TRANSPORT en RTT HUNT (de regels van het moment dat het spel start). ' +
         'Kijkers zien het op de kaart.</div></div>';
     } else if (v.soort === 'zones') {
       const zs = s.zones || [];
