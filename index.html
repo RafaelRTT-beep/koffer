@@ -185,6 +185,25 @@ const tijd = s => s == null ? '–' : s < 5 ? 'zojuist' : s < 90 ? Math.round(s)
   s < 5400 ? Math.round(s / 60) + ' min geleden' : s < 172800 ? Math.round(s / 3600) + ' u geleden' : Math.round(s / 86400) + ' dagen geleden';
 const afstand = m => m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(m < 10000 ? 2 : 1).replace('.', ',') + ' km';
 
+// Afstand tot de rand van het speelgebied (m): binnen positief, buiten negatief. Vlak benaderd, zoals de koffer.
+function randAfstand(g, lat, lon) {
+  const M = 111320, c = Math.cos(lat * Math.PI / 180);
+  const xy = p => [(p[1] - lon) * M * c, (p[0] - lat) * M];
+  if (g.soort === 'cirkel') return g.r - Math.hypot(...xy([g.lat, g.lon]));
+  const pt = (g.punten || []).map(xy);
+  if (pt.length < 3) return Infinity;
+  let binnen = false, kort = Infinity;
+  for (let i = 0, j = pt.length - 1; i < pt.length; j = i++) {
+    const [xi, yi] = pt[i], [xj, yj] = pt[j];
+    if ((yi > 0) !== (yj > 0) && xi + (0 - yi) * (xj - xi) / (yj - yi) > 0) binnen = !binnen;
+    const dx = xi - xj, dy = yi - yj, l2 = dx * dx + dy * dy;
+    let t = l2 > 0 ? -(xj * dx + yj * dy) / l2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    kort = Math.min(kort, Math.hypot(xj + t * dx, yj + t * dy));
+  }
+  return binnen ? kort : -kort;
+}
+
 // ---------------------------------------------------------------- ophalen
 async function rpc(fn, body) {
   const r = await fetch(SB + fn, {method: 'POST', headers: {apikey: SLEUTEL, 'Content-Type': 'application/json'},
@@ -316,6 +335,11 @@ function tekenStatus() {
     regels.push(['Volgen', ['uit', 'tijdens een spel', 'altijd'][ins.volgen] + ', elke ' + ins.interval_s + ' s']);
     regels.push(['Kijkers', ZICHT[ins.zicht] + (ins.zicht >= 2 ? ' (' + ins.vertraging_s + ' s)' : '') +
       (ins.zicht === 3 ? ', cirkel ' + ins.cirkel_m + ' m' : '')]);
+    if (ins.grens && d.pos) {
+      const rand = randAfstand(ins.grens, d.pos.lat, d.pos.lon);
+      regels.push(['Speelgebied', rand >= 0 ? 'binnen (rand op ' + afstand(rand) + ')' :
+        '<b style="color:var(--rood2)">BUITEN</b> (' + afstand(-rand) + ')']);
+    }
   } else if (d.zicht === 0) {
     regels.push(['Plek', 'de spelleider houdt de koffer nu verborgen']);
   } else if (d.pos) {
@@ -444,7 +468,8 @@ function bouwInstel() {
         (g ? '<button data-actie="geengrens">Weghalen</button>' : '') + '</div>' +
         (g && g.soort === 'cirkel' ? '<label style="margin-top:10px">Straal<span class="waarde" id="wgr">' + Math.round(g.r) + ' m</span></label>' +
           '<input type="range" id="grensR" min="20" max="3000" step="10" value="' + Math.round(g.r) + '">' : '') +
-        '<div class="uitleg">De koffer reageert hierop in de spellen vanaf firmware gps2; kijkers zien het op de kaart.</div></div>';
+        '<div class="uitleg">Geldt in DEFUSE, TRANSPORT en VOSSENJACHT (de regels van het moment dat het spel start). ' +
+        'Kijkers zien het op de kaart.</div></div>';
     } else if (v.soort === 'zones') {
       const zs = s.zones || [];
       h += '<div class="veld"><div class="knoppen" style="margin-top:0"><button data-actie="zone">+ Zone op de kaart</button></div>';
@@ -457,7 +482,8 @@ function bouwInstel() {
           '<input type="range" min="5" max="200" step="5" value="' + z.r + '" data-zone="' + zi + '" data-zk="r"></div>';
       });
       h += '<div class="uitleg">' + (zs.length ? zs.length + ' van hoogstens 20 zones.' : 'Nog geen zones.') +
-        ' De koffer gebruikt ze in TRANSPORT vanaf firmware gps2.</div></div>';
+        ' TRANSPORT neemt ze als route als op de koffer <b>Bron: GPS</b> aan staat (routescherm, toets 6): de ' +
+        'checkpoints in deze volgorde, de eindpost als eindzone.</div></div>';
     } else if (v.soort === 'link') {
       const url = location.origin + location.pathname + '#k=' + data.kijk_code;
       h += '<div class="veld"><div class="link" id="kijkLink">' + esc(url) + '</div><div class="knoppen">' +

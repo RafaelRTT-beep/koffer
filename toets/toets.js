@@ -133,6 +133,17 @@ const server = http.createServer((q, r) => {
   t('leider: de stand van de koffer', /accu 87 %.*9 satellieten/.test(await tekst('#regels')) &&
     (await tekst('#regels')).includes('tijdens een spel, elke 15 s'), await tekst('#regels'));
   t('leider: spoor en nauwkeurigheid op de kaart', (await page.$$('path.leaflet-interactive')).length >= 2);
+  leiderNu.instelling.grens = {soort: 'cirkel', lat: 51.9054, lon: 4.4667, r: 400};
+  await page.evaluate(() => haal());
+  await page.waitForFunction(() => document.getElementById('regels').textContent.includes('Speelgebied'));
+  t('leider: de koffer binnen het speelgebied, met de afstand tot de rand', /Speelgebiedbinnen \(rand op 400 m\)/.test(await tekst('#regels')),
+    await tekst('#regels'));
+  leiderNu.instelling.grens = {soort: 'veelhoek', punten: [[51.9056, 4.4660], [51.9056, 4.4675], [51.9065, 4.4675], [51.9065, 4.4660]]};
+  await page.evaluate(() => haal());
+  await page.waitForFunction(() => document.getElementById('regels').textContent.includes('BUITEN'));
+  t('leider: buiten een veelhoek = BUITEN, met hoe ver', /SpeelgebiedBUITEN \(2\d m\)/.test(await tekst('#regels')), await tekst('#regels'));
+  leiderNu.instelling.grens = null;
+  await page.evaluate(() => haal());
   await page.click('#bInstel');
   await page.waitForSelector('#instel.open');
   t('leider: instellingen open, cirkelstraal pas bij Vaag', !(await page.$('text=Straal van de vage cirkel')));
