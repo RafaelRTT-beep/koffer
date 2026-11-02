@@ -183,6 +183,14 @@ function tekenZones(groep, zones) {
 // ---------------------------------------------------------------- tijd en afstand
 const tijd = s => s == null ? '–' : s < 5 ? 'zojuist' : s < 90 ? Math.round(s) + ' s geleden' :
   s < 5400 ? Math.round(s / 60) + ' min geleden' : s < 172800 ? Math.round(s / 3600) + ' u geleden' : Math.round(s / 86400) + ' dagen geleden';
+// Een duur zoals mensen hem zeggen (Rafael, 2 nov 2026: "met instellingen op de kaart etc moeten secondes minuten zijn"):
+// 45 s, 2 min, 1 min 30 s, 1 uur 5 min. Nooit meer "600 s".
+const duur = s => {
+  s = Math.max(0, Math.round(s));
+  if (s < 60) return s + ' s';
+  const u = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), r = s % 60;
+  return [u && u + ' uur', m && m + ' min', r && r + ' s'].filter(Boolean).join(' ');
+};
 const afstand = m => m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(m < 10000 ? 2 : 1).replace('.', ',') + ' km';
 
 // Afstand tot de rand van het speelgebied (m): binnen positief, buiten negatief. Vlak benaderd, zoals de koffer.
@@ -332,8 +340,8 @@ function tekenStatus() {
       (d.pos.kmh > 1 ? ' · ' + d.pos.kmh.toFixed(1).replace('.', ',') + ' km/u' : '') : 'nog geen plek']);
     regels.push(['Koffer', (d.accu != null ? 'accu ' + d.accu + ' %' : '') + (d.sats != null ? ' · ' + d.sats + ' satellieten' : '') +
       (d.fix === false ? ' · geen GPS-fix' : '')]);
-    regels.push(['Volgen', ['uit', 'tijdens een spel', 'altijd'][ins.volgen] + ', elke ' + ins.interval_s + ' s']);
-    regels.push(['Kijkers', ZICHT[ins.zicht] + (ins.zicht >= 2 ? ' (' + ins.vertraging_s + ' s)' : '') +
+    regels.push(['Volgen', ['uit', 'tijdens een spel', 'altijd'][ins.volgen] + ', elke ' + duur(ins.interval_s)]);
+    regels.push(['Kijkers', ZICHT[ins.zicht] + (ins.zicht >= 2 ? ' (' + duur(ins.vertraging_s) + ')' : '') +
       (ins.zicht === 3 ? ', cirkel ' + ins.cirkel_m + ' m' : '')]);
     if (ins.grens && d.pos) {
       const rand = randAfstand(ins.grens, d.pos.lat, d.pos.lon);
@@ -400,23 +408,23 @@ const VELDEN = [
   {kop: 'Volgen'},
   {k: 'volgen', soort: 'keuze', label: 'Wanneer geeft de koffer zijn plek door', opties: [[1, 'Tijdens een spel'], [2, 'Altijd'], [0, 'Uit']],
    uitleg: 'Tijdens een spel = als DEFUSE, TRANSPORT of RTT HUNT open staat op de koffer.'},
-  {k: 'interval_s', soort: 'schuif', label: 'Plek doorgeven elke', min: 5, max: 300, stap: 5, eenheid: 's',
+  {k: 'interval_s', soort: 'schuif', label: 'Plek doorgeven elke', min: 5, max: 300, stap: 5, fmt: duur,
    uitleg: 'Vaker = meer 4G-data (ongeveer 1-2 MB per uur bij 15 s).'},
   {kop: 'Wat kijkers zien'},
   {k: 'zicht', soort: 'keuze', label: 'Met de kijk-link', opties: [[1, 'Live'], [2, 'Vertraagd'], [3, 'Vaag'], [0, 'Niets']],
    uitleg: 'Vaag = een cirkel waar de koffer ergens in ligt; hij blijft staan tot de koffer eruit loopt.'},
-  {k: 'vertraging_s', soort: 'schuif', label: 'Vertraging', min: 0, max: 600, stap: 10, eenheid: 's', toon: s => s.zicht >= 2},
+  {k: 'vertraging_s', soort: 'schuif', label: 'Vertraging', min: 0, max: 600, stap: 10, fmt: duur, toon: s => s.zicht >= 2},
   {k: 'cirkel_m', soort: 'schuif', label: 'Straal van de vage cirkel', min: 10, max: 1000, stap: 5, eenheid: 'm', toon: s => s.zicht === 3},
-  {k: 'ververs_s', soort: 'schuif', label: 'Kijkers krijgen een nieuwe plek', min: 0, max: 600, stap: 10, eenheid: 's', nul: 'steeds',
+  {k: 'ververs_s', soort: 'schuif', label: 'Kijkers krijgen een nieuwe plek', min: 0, max: 600, stap: 10, fmt: duur, nul: 'steeds',
    voor: 'elke ', toon: s => s.zicht > 0},
   {k: 'spoor_kijkers', soort: 'aanuit', label: 'Spoor laten zien', toon: s => s.zicht === 1 || s.zicht === 2},
-  {k: 'spoor_min', soort: 'schuif', label: 'Spoor van de laatste', min: 1, max: 240, stap: 1, eenheid: 'min',
+  {k: 'spoor_min', soort: 'schuif', label: 'Spoor van de laatste', min: 1, max: 240, stap: 1, fmt: m => duur(m * 60),
    toon: s => (s.zicht === 1 || s.zicht === 2) && s.spoor_kijkers},
   {k: 'zones_kijkers', soort: 'aanuit', label: 'Zones laten zien'},
   {kop: 'Speelgebied'},
   {soort: 'grens'},
   {k: 'grens_actie', soort: 'keuze', label: 'Buiten het speelgebied', opties: ACTIE.map((t, i) => [i, t]), toon: s => !!s.grens},
-  {k: 'grens_wacht_s', soort: 'schuif', label: 'Na', min: 0, max: 120, stap: 5, eenheid: 's buiten', toon: s => !!s.grens},
+  {k: 'grens_wacht_s', soort: 'schuif', label: 'Na', min: 0, max: 120, stap: 5, fmt: duur, na: ' buiten', toon: s => !!s.grens},
   {kop: 'TRANSPORT: zones en snelheid'},
   {soort: 'zones'},
   {k: 'max_kmh', soort: 'schuif', label: 'Harder dan', min: 0, max: 50, stap: 1, eenheid: 'km/u', nul: 'uit',
@@ -496,7 +504,9 @@ function bouwInstel() {
   tekenConcept();
 }
 
-function schuifTekst(v, w) { return w === 0 && v.nul ? v.nul : (v.voor || '') + w + ' ' + v.eenheid; }
+function schuifTekst(v, w) {
+  return w === 0 && v.nul ? v.nul : (v.voor || '') + (v.fmt ? v.fmt(w) : w + ' ' + v.eenheid) + (v.na || '');
+}
 
 $('blad').addEventListener('click', e => {
   const b = e.target.closest('button');
@@ -631,7 +641,7 @@ $('bOpslaan').onclick = async () => {
   // interval; in rust pas bij zijn volgende melding (hoogstens een half uur), of meteen als er een spel opengaat.
   const raaktKoffer = ['grens', 'zones', 'max_kmh', 'volgen', 'interval_s'].some(k => k in wijz);
   const nuVolgt = volgtNu({rol: 'leider', instelling: origineel, spel: data.spel});
-  const wanneer = nuVolgt ? 'binnen ' + origineel.interval_s + ' s' :
+  const wanneer = nuVolgt ? 'binnen ' + duur(origineel.interval_s) :
     'bij zijn volgende melding (in rust hoogstens een half uur, of meteen als er een spel opengaat)';
   try {
     data = await rpc('koffer_instel', {p_leider_code: code, p_instelling: wijz});

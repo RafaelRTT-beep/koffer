@@ -133,6 +133,16 @@ const server = http.createServer((q, r) => {
   t('leider: de stand van de koffer', /accu 87 %.*9 satellieten/.test(await tekst('#regels')) &&
     (await tekst('#regels')).includes('tijdens een spel, elke 15 s'), await tekst('#regels'));
   t('leider: spoor en nauwkeurigheid op de kaart', (await page.$$('path.leaflet-interactive')).length >= 2);
+  leiderNu.instelling.zicht = 2;  // vertraagd: de vertraging staat in minuten en seconden in de stand
+  leiderNu.instelling.vertraging_s = 90;
+  await page.evaluate(() => haal());
+  await page.waitForFunction(() => document.getElementById('regels').textContent.includes('vertraagd'));
+  t('tijden: kijkers vertraagd (1 min 30 s)', (await tekst('#regels')).includes('(1 min 30 s)'), await tekst('#regels'));
+  const spoor = await page.evaluate(() => [60, 90, 120].map(m => schuifTekst(VELDEN.find(v => v.k === 'spoor_min'), m)));
+  t('tijden: spoor van de laatste 1 uur, 1 uur 30 min, 2 uur', JSON.stringify(spoor) ===
+    JSON.stringify(['1 uur', '1 uur 30 min', '2 uur']), JSON.stringify(spoor));
+  leiderNu.instelling.zicht = 1;
+  leiderNu.instelling.vertraging_s = 60;
   leiderNu.instelling.grens = {soort: 'cirkel', lat: 51.9054, lon: 4.4667, r: 400};
   await page.evaluate(() => haal());
   await page.waitForFunction(() => document.getElementById('regels').textContent.includes('Speelgebied'));
@@ -151,6 +161,23 @@ const server = http.createServer((q, r) => {
   await page.click('.keuze button:has-text("Vaag")');
   t('leider: Vaag gekozen = cirkelstraal en vertraging verschijnen', !!(await page.$('text=Straal van de vage cirkel')) &&
     !!(await page.$('text=Vertraging')));
+  // Tijden in seconden en minuten (Rafael, 2 nov 2026: "met instellingen op de kaart etc moeten secondes minuten zijn")
+  const duren = await page.evaluate(() => [45, 60, 90, 600, 3600, 3905].map(duur));
+  t('tijden: 45 s, 1 min, 1 min 30 s, 10 min, 1 uur, 1 uur 5 min 5 s', JSON.stringify(duren) ===
+    JSON.stringify(['45 s', '1 min', '1 min 30 s', '10 min', '1 uur', '1 uur 5 min 5 s']), JSON.stringify(duren));
+  const schuif = (k, w) => page.evaluate(([k, w]) => {  // een schuif verzetten zoals een vinger, en lezen wat erbij staat
+    const i = VELDEN.findIndex(v => v.k === k);
+    const el = document.querySelector('input[type=range][data-i="' + i + '"]');
+    el.value = w;
+    el.dispatchEvent(new Event('input', {bubbles: true}));
+    return document.getElementById('w' + i).textContent;
+  }, [k, w]);
+  const vertr = [await schuif('vertraging_s', 600), await schuif('vertraging_s', 90), await schuif('vertraging_s', 0)];
+  const intv = [await schuif('interval_s', 300), await schuif('interval_s', 15)];
+  t('tijden: de schuiven zeggen 10 min, 1 min 30 s, 0 s, 5 min en 15 s (niet 600 s)',
+    JSON.stringify(vertr) === JSON.stringify(['10 min', '1 min 30 s', '0 s']) &&
+    JSON.stringify(intv) === JSON.stringify(['5 min', '15 s']), JSON.stringify([vertr, intv]));
+  await schuif('vertraging_s', 60);  // terug: hieronder telt welke instellingen veranderden
   await page.evaluate(() => {
     const i = VELDEN.findIndex(v => v.k === 'cirkel_m');
     const el = document.querySelector('input[type=range][data-i="' + i + '"]');
@@ -163,6 +190,9 @@ const server = http.createServer((q, r) => {
   await page.mouse.click(200, 300);
   await page.waitForSelector('#instel.open');
   t('leider: cirkel gezet, met een straalschuif', (await tekst('#blad')).includes('Cirkel van 300 m') && !!(await page.$('#grensR')));
+  const buiten = [await schuif('grens_wacht_s', 90), await schuif('grens_wacht_s', 10)];
+  t('tijden: na 1 min 30 s buiten', JSON.stringify(buiten) === JSON.stringify(['1 min 30 s buiten', '10 s buiten']),
+    JSON.stringify(buiten));
   // een zone
   await page.click('button[data-actie="zone"]');
   await page.mouse.click(250, 260);
