@@ -1,0 +1,1129 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="robots" content="noindex">
+<meta name="description" content="RTT Schaak: tactisch schaken in 3D. Open de link van je uitnodiging en speel mee.">
+<meta property="og:title" content="RTT SCHAAK">
+<meta property="og:description" content="Je bent uitgedaagd voor een potje schaak. Open de link en speel mee.">
+<meta name="theme-color" content="#07090c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>RTT Schaak</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2307090c'/%3E%3Cpath d='M4 4h10v10H4zM18 18h10v10H18z' fill='%23DC0000'/%3E%3Cpath d='M18 4h10v10H18zM4 18h10v10H4z' fill='%2326323d'/%3E%3C/svg%3E">
+<style>
+/* Opzet: het 3D-veld vult het hele scherm; de bediening ligt er als een HUD overheen (boven de tegenstander,
+   onder jijzelf en de knoppen). Kleuren en maten staan hieronder; rood is van het team ROOD en van RTT. */
+:root{
+  --bg:#07090c; --paneel:rgba(13,18,23,.86); --paneel2:#161e26; --rand:#2a3642; --rand2:#3b4b5a;
+  --tekst:#e9eff5; --zacht:#93a4b3; --rood:#DC0000; --rood2:#ff3b30; --staal:#cfe0ee; --cyaan:#35d6e6; --geel:#FFD400; --groen:#2ECC40;
+  --kop:"DIN Condensed","Bahnschrift","Roboto Condensed","Arial Narrow","Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Roboto Mono",monospace;
+  --snij:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--tekst);overflow:hidden;
+  font:15px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%;
+  -webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;overscroll-behavior:none}
+#veld{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
+[hidden]{display:none!important}
+button{font:inherit;color:inherit;cursor:pointer}
+.lab{font:600 11px/1 var(--kop);letter-spacing:.18em;text-transform:uppercase;color:var(--zacht)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ---- kop */
+.kop{position:fixed;left:0;right:0;top:0;z-index:20;display:flex;align-items:center;gap:10px;pointer-events:none;
+  padding:calc(8px + env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left))}
+.kop>*{pointer-events:auto}
+.merk{display:flex;align-items:center;gap:8px;font:700 22px/1 var(--kop);letter-spacing:.08em}
+.merk b{background:var(--rood);color:#fff;padding:5px 8px 3px;clip-path:polygon(0 0,100% 0,100% 70%,82% 100%,0 100%)}
+.merk span{color:var(--tekst)}
+.ruimte{flex:1}
+.chip{font:600 12px/1 var(--mono);letter-spacing:.08em;color:var(--zacht);background:var(--paneel);border:1px solid var(--rand);
+  padding:7px 9px;clip-path:var(--snij)}
+.chip.fout{color:#fff;background:var(--rood);border-color:var(--rood)}
+.ik{width:40px;height:36px;display:grid;place-items:center;background:var(--paneel);border:1px solid var(--rand);clip-path:var(--snij);padding:0}
+.ik svg{width:18px;height:18px;stroke:var(--tekst);fill:none;stroke-width:2;stroke-linecap:square}
+
+/* ---- spelersplaten */
+.plaat{pointer-events:none;position:fixed;z-index:15;left:50%;transform:translateX(-50%);width:min(520px,calc(100% - 24px));display:flex;align-items:center;gap:10px;
+  background:linear-gradient(90deg,rgba(13,18,23,.92),rgba(13,18,23,.72));border:1px solid var(--rand);clip-path:var(--snij);padding:8px 12px 8px 0;min-height:48px}
+.plaat.boven{top:calc(54px + env(safe-area-inset-top))}
+.plaat.onder{bottom:calc(64px + env(safe-area-inset-bottom))}
+.plaat .streep{align-self:stretch;width:6px;background:var(--staal);flex:none}
+.plaat[data-team="w"] .streep{background:var(--rood)}
+.plaat .wie{min-width:0;flex:1}
+.plaat .naam{font:700 17px/1.1 var(--kop);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plaat .sub{display:flex;align-items:center;gap:6px;margin-top:3px}
+.stip{width:7px;height:7px;border-radius:50%;background:#55606b;flex:none}
+.stip.aan{background:var(--groen);box-shadow:0 0 8px var(--groen)}
+.buit{font-size:15px;line-height:1;letter-spacing:-1px;white-space:nowrap;overflow:hidden;color:var(--staal)}
+.buit.w{color:var(--rood2)}
+.buit i{font:600 11px var(--mono);letter-spacing:0;color:var(--zacht);margin-left:6px;font-style:normal}
+.beurt{font:700 12px/1 var(--kop);letter-spacing:.16em;padding:6px 8px 4px;border:1px solid var(--rand2);color:var(--zacht);visibility:hidden;white-space:nowrap}
+.plaat.aanzet{border-color:var(--rood)}
+.plaat.aanzet .beurt{visibility:visible;color:#fff;background:var(--rood);border-color:var(--rood);animation:pols 1.6s ease-in-out infinite}
+@keyframes pols{50%{opacity:.55}}
+
+/* ---- statusregel */
+#status{position:fixed;z-index:14;left:0;right:0;top:calc(112px + env(safe-area-inset-top));text-align:center;pointer-events:none;
+  font:700 clamp(18px,4.6vw,28px)/1 var(--kop);letter-spacing:.2em;text-transform:uppercase;text-shadow:0 2px 14px #000,0 0 2px #000}
+#status.alarm{color:var(--rood2)}
+#status small{display:block;margin-top:6px;font:600 11px/1 var(--mono);letter-spacing:.12em;color:var(--zacht)}
+
+/* ---- knoppenbalk */
+.balk{position:fixed;z-index:20;left:0;right:0;bottom:0;display:flex;justify-content:center;gap:6px;
+  padding:8px max(12px,env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));
+  background:linear-gradient(0deg,rgba(7,9,12,.95),rgba(7,9,12,0))}
+.kn{flex:1;max-width:124px;min-height:44px;background:var(--paneel);border:1px solid var(--rand);clip-path:var(--snij);
+  font:700 13px/1 var(--kop);letter-spacing:.14em;text-transform:uppercase;padding:4px 6px 2px}
+.kn:active{background:var(--paneel2)}
+.kn:disabled{opacity:.35;cursor:default}
+.kn.rood{background:var(--rood);border-color:var(--rood);color:#fff}
+.kn.let{border-color:var(--geel);color:var(--geel)}
+:focus-visible{outline:2px solid var(--cyaan);outline-offset:2px}
+
+/* ---- logboek */
+#log{position:fixed;z-index:16;right:max(12px,env(safe-area-inset-right));top:calc(54px + env(safe-area-inset-top));bottom:calc(64px + env(safe-area-inset-bottom));
+  width:210px;background:var(--paneel);border:1px solid var(--rand);clip-path:var(--snij);display:flex;flex-direction:column}
+#log h2{margin:0;padding:10px 12px 8px;border-bottom:1px solid var(--rand);display:flex;justify-content:space-between}
+#logLijst{flex:1;overflow-y:auto;padding:6px 0;font:13px/1.9 var(--mono);-webkit-overflow-scrolling:touch}
+#logLijst div{display:grid;grid-template-columns:38px 1fr 1fr;padding:0 12px}
+#logLijst div span:first-child{color:var(--zacht)}
+#logLijst .nu{color:#fff;background:rgba(220,0,0,.35);padding:0 4px;margin:0 -4px}
+#logLijst p{margin:14px 12px;color:var(--zacht);font:13px/1.4 system-ui,sans-serif}
+@media (max-width:1040px){
+  #log{left:12px;right:12px;width:auto;top:auto;height:44vh;bottom:calc(64px + env(safe-area-inset-bottom));z-index:30}
+  #log:not(.open){display:none}
+}
+@media (min-width:1041px){ #knLog{display:none} .plaat{margin-left:-113px} #status{right:226px} .balk{padding-right:236px} }
+
+/* ---- vensters */
+.laag{position:fixed;inset:0;z-index:40;display:grid;place-items:center;overflow-y:auto;
+  padding:calc(14px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom));background:rgba(4,6,8,.62);backdrop-filter:blur(3px)}
+.laag.licht{background:rgba(4,6,8,.25);backdrop-filter:none}
+.venster{width:min(460px,100%);background:linear-gradient(180deg,#121920,#0b1015);border:1px solid var(--rand2);
+  clip-path:polygon(16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%,0 16px);padding:20px 18px 18px;position:relative}
+.venster::before{content:"";position:absolute;left:0;top:0;width:64px;height:4px;background:var(--rood)}
+.venster h1{margin:0 0 4px;font:700 34px/1 var(--kop);letter-spacing:.1em;text-transform:uppercase;text-wrap:balance}
+.venster h1 b{color:var(--rood2)}
+.venster p{margin:6px 0 14px;color:var(--zacht);line-height:1.45}
+.venster p strong{color:var(--tekst)}
+.rij{display:flex;gap:8px;margin:8px 0 14px}
+.rij .kn{max-width:none;min-height:46px}
+.keus{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:0;border:1px solid var(--rand2);margin:6px 0 14px}
+.keus button{min-height:42px;background:transparent;border:0;border-right:1px solid var(--rand2);font:700 13px/1 var(--kop);letter-spacing:.12em;text-transform:uppercase;color:var(--zacht);padding:4px 4px 2px}
+.keus button:last-child{border-right:0}
+.keus button[aria-pressed="true"]{background:var(--tekst);color:#0b0f13}
+.keus button[aria-pressed="true"][data-v="w"]{background:var(--rood);color:#fff}
+.veldje{width:100%;min-height:44px;background:#0a0e12;border:1px solid var(--rand2);color:var(--tekst);padding:8px 10px;font:15px var(--mono);
+  user-select:text;-webkit-user-select:text;border-radius:0}
+.groot{width:100%;min-height:52px;font-size:16px;max-width:none}
+.blok{border-top:1px solid var(--rand);padding-top:14px;margin-top:4px}
+.klein{font-size:13px;color:var(--zacht);margin:10px 0 0}
+.klein button{background:none;border:0;padding:0;color:var(--cyaan);text-decoration:underline}
+.sluit{position:absolute;right:10px;top:10px;width:36px;height:36px;background:none;border:0;color:var(--zacht);font:400 24px/1 system-ui}
+.promo{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.promo button{aspect-ratio:1;background:#0a0e12;border:1px solid var(--rand2);font-size:40px;line-height:1;color:var(--staal);padding:0}
+.promo.w button{color:var(--rood2)}
+.promo button:active{border-color:var(--rood)}
+#toast{position:fixed;z-index:60;left:50%;bottom:calc(128px + env(safe-area-inset-bottom));transform:translateX(-50%);max-width:calc(100% - 32px);
+  background:#0b0f13;border:1px solid var(--rand2);border-left:4px solid var(--rood);padding:10px 14px;font-size:14px;text-align:left;pointer-events:none;
+  opacity:0;transition:opacity .2s}
+#toast.aan{opacity:1}
+#vraag{position:fixed;z-index:35;left:50%;transform:translateX(-50%);top:calc(150px + env(safe-area-inset-top));width:min(420px,calc(100% - 24px));
+  background:#0b0f13;border:1px solid var(--geel);clip-path:var(--snij);padding:12px}
+#vraag .rij{margin:10px 0 0}
+@media (max-height:520px){ .plaat.boven{top:calc(50px + env(safe-area-inset-top))} #status{top:auto;bottom:calc(120px + env(safe-area-inset-bottom))} }
+@media (prefers-reduced-motion:reduce){ .plaat.aanzet .beurt{animation:none} }
+</style>
+</head>
+<body>
+<canvas id="veld" tabindex="0" aria-label="Schaakbord in 3D. De zetten staan in het logboek."></canvas>
+
+<header class="kop">
+  <div class="merk"><b>RTT</b><span>SCHAAK</span></div>
+  <div class="ruimte"></div>
+  <div class="chip" id="chipNet" hidden>GEEN VERBINDING</div>
+  <button class="chip" id="chipCode" hidden title="Uitnodiging tonen"></button>
+  <button class="ik" id="knGeluid" aria-label="Geluid aan of uit"><svg viewBox="0 0 24 24"><path id="icoGeluid" d="M4 9h4l5-4v14l-5-4H4zM17 8c2 2 2 6 0 8"/></svg></button>
+  <button class="ik" id="knMenu" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+</header>
+
+<section class="plaat boven" id="plTegen" data-team="b" hidden>
+  <div class="streep"></div>
+  <div class="wie"><div class="naam"></div><div class="sub"><span class="stip"></span><span class="lab"></span><span class="buit"></span></div></div>
+  <div class="beurt">AAN ZET</div>
+</section>
+<div id="status" role="status" aria-live="polite"></div>
+<section class="plaat onder" id="plIk" data-team="w" hidden>
+  <div class="streep"></div>
+  <div class="wie"><div class="naam"></div><div class="sub"><span class="stip"></span><span class="lab"></span><span class="buit"></span></div></div>
+  <div class="beurt">AAN ZET</div>
+</section>
+
+<aside id="log" hidden>
+  <h2 class="lab"><span>Logboek</span><span id="logTel" class="mono"></span></h2>
+  <div id="logLijst"></div>
+</aside>
+
+<nav class="balk" id="balk" hidden>
+  <button class="kn" id="knRemise">Remise</button>
+  <button class="kn" id="knOpgeven">Opgeven</button>
+  <button class="kn" id="knTerug" hidden>Terug</button>
+  <button class="kn" id="knCam">Camera</button>
+  <button class="kn" id="knLog">Log</button>
+</nav>
+
+<div id="vraag" hidden>
+  <div class="lab" style="color:var(--geel)">Remise aangeboden</div>
+  <div id="vraagTekst" style="margin-top:6px"></div>
+  <div class="rij"><button class="kn" id="knRemiseJa">Aannemen</button><button class="kn" id="knRemiseNee">Weigeren</button></div>
+</div>
+<div id="toast" role="status"></div>
+
+<!-- start -->
+<div class="laag" id="lgStart" hidden>
+  <div class="venster">
+    <h1><b>RTT</b> Schaak</h1>
+    <p>Tactisch schaken in 3D. Daag iemand uit met een link, of oefen eerst.</p>
+    <label class="lab" for="inNaam">Jouw naam</label>
+    <input class="veldje" id="inNaam" maxlength="20" autocomplete="nickname" placeholder="bijv. Raf" style="margin:6px 0 14px">
+    <div class="lab">Jouw team</div>
+    <div class="keus" id="keusKleur">
+      <button data-v="w" aria-pressed="true">Rood begint</button><button data-v="b" aria-pressed="false">Zwart</button><button data-v="r" aria-pressed="false">Loten</button>
+    </div>
+    <button class="kn rood groot" id="knOnline">Speel online: nodig iemand uit</button>
+    <div class="blok">
+      <div class="lab">Oefenen tegen de computer</div>
+      <div class="keus" id="keusNiveau">
+        <button data-v="1" aria-pressed="false">Rekruut</button><button data-v="2" aria-pressed="true">Operator</button><button data-v="3" aria-pressed="false">Commandant</button>
+      </div>
+      <div class="rij" style="margin-bottom:0"><button class="kn" id="knComputer">Tegen de computer</button><button class="kn" id="knLokaal">Samen op 1 scherm</button></div>
+    </div>
+    <p class="klein" id="verder" hidden></p>
+  </div>
+</div>
+
+<!-- uitnodiging -->
+<div class="laag" id="lgNodig" hidden>
+  <div class="venster">
+    <button class="sluit" data-sluit aria-label="Sluiten">&times;</button>
+    <h1>Uitnodiging</h1>
+    <p>Stuur deze link naar je tegenstander. Zodra die hem opent en meedoet, begint het spel. <strong id="nodigKleur"></strong></p>
+    <input class="veldje" id="inLink" readonly>
+    <div class="rij"><button class="kn rood" id="knKopieer">Kopieer link</button><button class="kn" id="knDeel">Delen</button></div>
+    <div class="lab" id="nodigStatus">Wacht op tegenstander</div>
+  </div>
+</div>
+
+<!-- uitgenodigd -->
+<div class="laag" id="lgMee" hidden>
+  <div class="venster">
+    <h1>Je bent <b>uitgedaagd</b></h1>
+    <p id="meeTekst"></p>
+    <label class="lab" for="inNaam2">Jouw naam</label>
+    <input class="veldje" id="inNaam2" maxlength="20" autocomplete="nickname" placeholder="bijv. Mike" style="margin:6px 0 14px">
+    <button class="kn rood groot" id="knMee">Doe mee</button>
+    <p class="klein"><button id="knKijk">Alleen meekijken</button></p>
+  </div>
+</div>
+
+<!-- promotie -->
+<div class="laag licht" id="lgPromo" hidden>
+  <div class="venster">
+    <h1>Promotie</h1>
+    <p style="margin-bottom:0">Je pion is aan de overkant. Kies wat hij wordt.</p>
+    <div class="promo" id="promo"><button data-p="q" aria-label="Dame">♛</button><button data-p="r" aria-label="Toren">♜</button><button data-p="b" aria-label="Loper">♝</button><button data-p="n" aria-label="Paard">♞</button></div>
+  </div>
+</div>
+
+<!-- einde -->
+<div class="laag licht" id="lgEinde" hidden>
+  <div class="venster">
+    <button class="sluit" data-sluit aria-label="Sluiten">&times;</button>
+    <div class="lab" id="eindeKop">Einde missie</div>
+    <h1 id="eindeTitel" style="margin-top:6px"></h1>
+    <p id="eindeTekst"></p>
+    <div class="rij"><button class="kn rood" id="knRevanche">Revanche</button><button class="kn" id="knNieuw">Nieuw spel</button></div>
+    <p class="klein"><button data-sluit>Bord bekijken</button></p>
+  </div>
+</div>
+
+<!-- menu -->
+<div class="laag" id="lgMenu" hidden>
+  <div class="venster">
+    <button class="sluit" data-sluit aria-label="Sluiten">&times;</button>
+    <h1>Menu</h1>
+    <p>Draai het bord door te slepen, zoom met twee vingers of het muiswiel. Tik een stuk aan en dan het vak waar het heen moet.</p>
+    <div class="rij"><button class="kn" id="knMenuNodig">Uitnodiging</button><button class="kn" id="knMenuNieuw">Nieuw spel</button></div>
+    <p class="klein">Notatie: K koning, D dame, T toren, L loper, P paard.</p>
+  </div>
+</div>
+
+<div class="laag" id="lgFout" hidden><div class="venster"><h1>Geen 3D</h1><p id="foutTekst">Deze browser kan het 3D-bord niet tonen. Probeer een recente versie van Chrome, Safari, Edge of Firefox.</p></div></div>
+
+<script src="three.min.js"></script>
+<script src="regels.js"></script>
+<script>
+'use strict';
+// RTT SCHAAK. De regels staan in regels.js, het 3D-werk is three.js (r149, in deze map). Online spelen loopt via
+// Supabase (project RTT APP): vijf functies (database.sql). De sleutel hieronder is de publieke sleutel van het
+// project; wie mag zetten hangt aan een geheim token per speler, dat alleen in de eigen browser staat.
+const SB = 'https://wrkoeoharqyjjjnlihgu.supabase.co/rest/v1/rpc/';
+const SLEUTEL = 'sb_publishable_3KEKBN8KSyfbDGV23aD0_A_Lk0ZgBG_';
+const R = self.Regels, $ = id => document.getElementById(id);
+const TEAM = {w: 'ROOD', b: 'ZWART'};
+const GLYPH = {P: '♟', N: '♞', B: '♝', R: '♜', Q: '♛', K: '♚'};
+const RUSTIG = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const opslag = {
+  lees(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  zet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  weg(k) { try { localStorage.removeItem(k); } catch (e) {} }
+};
+const anders = k => k === 'w' ? 'b' : 'w';
+
+async function rpc(fn, body) {
+  let r;
+  try {
+    r = await fetch(SB + fn, {method: 'POST', headers: {apikey: SLEUTEL, 'Content-Type': 'application/json'},
+                              body: JSON.stringify(body), cache: 'no-store'});
+  } catch (e) { const f = new Error('Geen verbinding.'); f.status = 0; throw f; }
+  const t = await r.text();
+  let j = null;
+  try { j = JSON.parse(t); } catch (e) {}
+  if (!r.ok) { const f = new Error((j && j.message) || ('fout ' + r.status)); f.status = r.status; throw f; }
+  return j;
+}
+
+// ================================================================== 3D
+const CAMSTAND = [[.8, 'Schuin', 1], [.07, 'Boven', 1.12], [1.12, 'Laag', 1]];
+let renderer, scene, camera, stukkenGroep, merkGroep, zwaai, ringen = [];
+const cam = {az: 0, pol: 0.8, rad: 16, tAz: 0, tPol: 0.8, tRad: 16, zelf: false};
+const opVeld = new Array(64).fill(null);
+const tweens = [];
+let animBezig = 0;
+const geoCache = {}, mat = {};
+const klok = {t: 0};
+
+function tex(w, h, teken) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  teken(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+  t.anisotropy = renderer ? Math.min(8, renderer.capabilities.getMaxAnisotropy()) : 1;
+  return t;
+}
+const pos = v => new THREE.Vector3((v & 7) - 3.5, 0, 3.5 - (v >> 3));
+
+function bouwWereld() {
+  const canvas = $('veld');
+  renderer = new THREE.WebGLRenderer({canvas, antialias: true, powerPreference: 'high-performance'});
+  renderer.setPixelRatio(window.__schaakLicht ? .5 : Math.min(devicePixelRatio || 1, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.25;
+  renderer.shadowMap.enabled = !window.__schaakLicht; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x07090c);
+  scene.fog = new THREE.Fog(0x07090c, 20, 50);
+  camera = new THREE.PerspectiveCamera(40, 1, 0.5, 200);
+
+  // omgeving voor de spiegeling in het metaal: donker, met een paar lichtbakken en een rode gloed
+  const omg = tex(512, 256, (g, w, h) => {
+    const v = g.createLinearGradient(0, 0, 0, h); v.addColorStop(0, '#1c2733'); v.addColorStop(.5, '#0b1016'); v.addColorStop(1, '#020304');
+    g.fillStyle = v; g.fillRect(0, 0, w, h);
+    g.fillStyle = '#ffffff'; g.fillRect(40, 30, 120, 26); g.fillRect(300, 44, 90, 20);
+    g.fillStyle = '#9fd4ff'; g.fillRect(200, 20, 50, 14);
+    g.fillStyle = '#ff2a1a'; g.fillRect(420, 70, 70, 18); g.fillRect(150, 96, 40, 10);
+  });
+  omg.mapping = THREE.EquirectangularReflectionMapping;
+  const pm = new THREE.PMREMGenerator(renderer);
+  scene.environment = pm.fromEquirectangular(omg).texture;
+  pm.dispose();
+
+  scene.add(new THREE.HemisphereLight(0xbfd6ea, 0x0a0d10, 0.55));
+  const zon = new THREE.DirectionalLight(0xffffff, 1.35);
+  zon.position.set(5.5, 11, 4.5); zon.castShadow = true;
+  const klein = Math.min(innerWidth, innerHeight) < 700;
+  zon.shadow.mapSize.set(klein ? 1024 : 2048, klein ? 1024 : 2048);
+  Object.assign(zon.shadow.camera, {left: -7.5, right: 7.5, top: 7.5, bottom: -7.5, near: 2, far: 30});
+  zon.shadow.bias = -0.0004; zon.shadow.normalBias = 0.02;
+  scene.add(zon);
+  const roodLicht = new THREE.PointLight(0xff2010, 0.9, 26); roodLicht.position.set(-8, 3.2, 7); scene.add(roodLicht);
+  const koudLicht = new THREE.PointLight(0x66c8ff, 0.7, 26); koudLicht.position.set(8, 3.2, -7); scene.add(koudLicht);
+
+  // de grond: een raster dat in de mist verdwijnt
+  const raster = tex(256, 256, (g, w) => {
+    g.fillStyle = '#07090c'; g.fillRect(0, 0, w, w);
+    g.strokeStyle = 'rgba(86,110,130,.42)'; g.lineWidth = 2; g.strokeRect(0, 0, w, w);
+    g.strokeStyle = 'rgba(86,110,130,.14)'; g.lineWidth = 1;
+    for (let i = 1; i < 4; i++) { g.beginPath(); g.moveTo(i * 64, 0); g.lineTo(i * 64, w); g.moveTo(0, i * 64); g.lineTo(w, i * 64); g.stroke(); }
+  });
+  raster.wrapS = raster.wrapT = THREE.RepeatWrapping; raster.repeat.set(40, 40);
+  const grond = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), new THREE.MeshStandardMaterial({map: raster, roughness: .95, metalness: 0}));
+  grond.rotation.x = -Math.PI / 2; grond.position.y = -0.62; grond.receiveShadow = true; scene.add(grond);
+  [[7.6, .55], [10.5, .3], [14.5, .16]].forEach(([r, a]) => {
+    const m = new THREE.Mesh(new THREE.RingGeometry(r, r + 0.035, 120), new THREE.MeshBasicMaterial({color: 0xdc0000, transparent: true, opacity: a, depthWrite: false}));
+    m.rotation.x = -Math.PI / 2; m.position.y = -0.6; scene.add(m); ringen.push(m);
+  });
+  if (!RUSTIG) {
+    const zt = tex(512, 512, (g, w) => {
+      if (!g.createConicGradient) return;
+      const c = g.createConicGradient(0, w / 2, w / 2);
+      c.addColorStop(0, 'rgba(255,40,30,.55)'); c.addColorStop(.12, 'rgba(255,40,30,0)'); c.addColorStop(1, 'rgba(255,40,30,0)');
+      g.fillStyle = c; g.beginPath(); g.arc(w / 2, w / 2, w / 2, 0, 7); g.fill();
+    });
+    zwaai = new THREE.Mesh(new THREE.CircleGeometry(14.5, 64), new THREE.MeshBasicMaterial({map: zt, transparent: true, opacity: .32, depthWrite: false, blending: THREE.AdditiveBlending}));
+    zwaai.rotation.x = -Math.PI / 2; zwaai.position.y = -0.595; scene.add(zwaai);
+  }
+
+  // het bord: een stalen plaat met de missiekaart erop
+  const staal = new THREE.MeshStandardMaterial({color: 0x161c22, metalness: .85, roughness: .42});
+  const plaat = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.42, 9.6), staal);
+  plaat.position.y = -0.211; plaat.receiveShadow = true; plaat.castShadow = true; scene.add(plaat);
+  const voet = new THREE.Mesh(new THREE.BoxGeometry(10.3, 0.2, 10.3), new THREE.MeshStandardMaterial({color: 0x0c1014, metalness: .7, roughness: .6}));
+  voet.position.y = -0.52; voet.receiveShadow = true; voet.castShadow = true; scene.add(voet);
+  const gloed = new THREE.MeshBasicMaterial({color: 0xff1a10});
+  [[0, 4.81, 9.2, .03], [0, -4.81, 9.2, .03], [4.81, 0, .03, 9.2], [-4.81, 0, .03, 9.2]].forEach(([x, z, bx, bz]) => {
+    const l = new THREE.Mesh(new THREE.BoxGeometry(bx, 0.05, bz), gloed); l.position.set(x, -0.2, z); scene.add(l);
+  });
+  [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([a, b]) => {
+    const p = new THREE.Mesh(new THREE.BoxGeometry(.5, .34, .5), staal); p.position.set(a * 4.95, -0.36, b * 4.95); p.castShadow = true; scene.add(p);
+    const t = new THREE.Mesh(new THREE.BoxGeometry(.2, .05, .2), gloed); t.position.set(a * 4.95, -0.17, b * 4.95); scene.add(t);
+  });
+  const kaart = tex(1536, 1536, tekenKaart);
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(9.6, 9.6), new THREE.MeshStandardMaterial({map: kaart, metalness: .35, roughness: .55}));
+  top.rotation.x = -Math.PI / 2; top.position.y = 0.001; top.receiveShadow = true; scene.add(top);
+
+  merkGroep = new THREE.Group(); scene.add(merkGroep);
+  stukkenGroep = new THREE.Group(); scene.add(stukkenGroep);
+  maakMaterialen(); maakMerken();
+  addEventListener('resize', pasMaat); pasMaat();
+  bedien(canvas);
+  requestAnimationFrame(lus);
+}
+
+function tekenKaart(g, W) {
+  const m = 128, v = 160, lijnen = 'abcdefgh';
+  g.fillStyle = '#0c1116'; g.fillRect(0, 0, W, W);
+  for (let r = 0; r < 8; r++) for (let f = 0; f < 8; f++) {
+    const x = m + f * v, y = m + (7 - r) * v, licht = (f + r) % 2 === 1;
+    g.fillStyle = licht ? '#3a4854' : '#161d25'; g.fillRect(x, y, v, v);
+    if (!licht) {                                   // arcering op de donkere vakken
+      g.save(); g.beginPath(); g.rect(x, y, v, v); g.clip(); g.strokeStyle = 'rgba(255,255,255,.035)'; g.lineWidth = 2;
+      for (let k = -v; k < v; k += 16) { g.beginPath(); g.moveTo(x + k, y + v); g.lineTo(x + k + v, y); g.stroke(); }
+      g.restore();
+    }
+    g.strokeStyle = licht ? 'rgba(255,255,255,.26)' : 'rgba(255,255,255,.14)'; g.lineWidth = 2;
+    const a = 9, b = 26;                             // hoekjes als op een richtkruis
+    [[x + a, y + a, 1, 1], [x + v - a, y + a, -1, 1], [x + a, y + v - a, 1, -1], [x + v - a, y + v - a, -1, -1]].forEach(([px, py, sx, sy]) => {
+      g.beginPath(); g.moveTo(px + sx * b, py); g.lineTo(px, py); g.lineTo(px, py + sy * b); g.stroke();
+    });
+    g.fillStyle = licht ? 'rgba(255,255,255,.34)' : 'rgba(255,255,255,.2)';
+    g.font = '600 17px ui-monospace,Menlo,Consolas,monospace'; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    g.fillText((lijnen[f] + (r + 1)).toUpperCase(), x + 15, y + v - 15);
+  }
+  g.strokeStyle = '#DC0000'; g.lineWidth = 5; g.strokeRect(m - 9, m - 9, 8 * v + 18, 8 * v + 18);
+  g.strokeStyle = 'rgba(255,255,255,.22)'; g.lineWidth = 2; g.strokeRect(22, 22, W - 44, W - 44);
+  g.fillStyle = '#b9c8d6'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '700 50px "DIN Condensed","Bahnschrift","Arial Narrow",Arial,sans-serif';
+  for (let i = 0; i < 8; i++) {
+    const c = m + i * v + v / 2;
+    g.fillText(lijnen[i].toUpperCase(), c, W - m / 2 + 4);
+    g.save(); g.translate(c, m / 2 - 4); g.rotate(Math.PI); g.fillText(lijnen[i].toUpperCase(), 0, 0); g.restore();
+    g.fillText(String(8 - i), m / 2 - 4, c);
+    g.save(); g.translate(W - m / 2 + 4, c); g.rotate(Math.PI); g.fillText(String(8 - i), 0, 0); g.restore();
+  }
+  g.fillStyle = '#DC0000';                           // rode hoekstukken
+  [[22, 22, 1, 1], [W - 22, 22, -1, 1], [22, W - 22, 1, -1], [W - 22, W - 22, -1, -1]].forEach(([x, y, sx, sy]) => {
+    g.fillRect(Math.min(x, x + sx * 78), Math.min(y, y + sy * 10), 78, 10); g.fillRect(Math.min(x, x + sx * 10), Math.min(y, y + sy * 78), 10, 78);
+  });
+  g.font = '700 30px "DIN Condensed","Bahnschrift","Arial Narrow",Arial,sans-serif'; g.fillStyle = '#ff3b30';
+  g.fillText('RTT', 78, W - 62);
+  g.save(); g.translate(W - 78, 62); g.rotate(Math.PI); g.fillText('RTT', 0, 0); g.restore();
+}
+
+function maakMaterialen() {
+  mat.w = new THREE.MeshStandardMaterial({color: 0xd80c12, metalness: .55, roughness: .34, emissive: 0x360000, flatShading: true});
+  mat.b = new THREE.MeshStandardMaterial({color: 0x2a333c, metalness: .9, roughness: .3, emissive: 0x05080b, flatShading: true});
+  mat.wDonker = new THREE.MeshStandardMaterial({color: 0x15191d, metalness: .8, roughness: .4, flatShading: true});
+  mat.bLicht = new THREE.MeshStandardMaterial({color: 0xc9d6e2, metalness: .7, roughness: .3, flatShading: true});
+  mat.wLijn = new THREE.LineBasicMaterial({color: 0xffa090, transparent: true, opacity: .42});
+  mat.bLijn = new THREE.LineBasicMaterial({color: 0xbcd3e6, transparent: true, opacity: .62});
+  const ring = kleur => new THREE.MeshBasicMaterial({map: tex(128, 128, (g, w) => {
+    g.strokeStyle = kleur; g.lineWidth = 7; g.beginPath(); g.arc(w / 2, w / 2, 50, 0, 7); g.stroke();
+    g.lineWidth = 3; g.globalAlpha = .5; g.beginPath(); g.arc(w / 2, w / 2, 38, 0, 7); g.stroke();
+  }), transparent: true, depthWrite: false, opacity: .95});
+  mat.wRing = ring('#ff2418'); mat.bRing = ring('#d5e6f5');
+}
+
+// De stukken: tactische eenheden. Elk stuk is een draaivorm met 8 vlakken plus een paar blokken.
+const PROFIEL = {
+  P: [[0, 0], [.31, 0], [.31, .08], [.25, .13], [.13, .40], [.19, .45], [.19, .50], [.11, .53], [0, .53]],
+  R: [[0, 0], [.35, 0], [.35, .09], [.28, .15], [.23, .60], [.31, .67], [.31, .88], [.21, .88], [.21, .78], [0, .78]],
+  N: [[0, 0], [.35, 0], [.35, .09], [.28, .15], [.24, .26], [0, .26]],
+  B: [[0, 0], [.35, 0], [.35, .09], [.27, .15], [.12, .56], [.20, .61], [.20, .66], [.11, .70], [.19, .88], [0, 1.12]],
+  Q: [[0, 0], [.37, 0], [.37, .09], [.29, .16], [.13, .72], [.22, .78], [.22, .83], [.13, .87], [.26, 1.08], [.17, 1.08], [0, 1.0]],
+  K: [[0, 0], [.37, 0], [.37, .09], [.29, .16], [.15, .80], [.24, .86], [.24, .91], [.15, .95], [.24, 1.14], [0, 1.14]]
+};
+function vorm(soort) {
+  if (geoCache[soort]) return geoCache[soort];
+  const delen = [];
+  const lijf = new THREE.LatheGeometry(PROFIEL[soort].map(p => new THREE.Vector2(p[0], p[1])), 8);
+  lijf.rotateY(Math.PI / 8);
+  delen.push({geo: lijf, lijn: new THREE.EdgesGeometry(lijf, 24)});
+  const blok = (bx, by, bz, x, y, z, accent, ry) => { const g = new THREE.BoxGeometry(bx, by, bz); if (ry) g.rotateY(ry); g.translate(x, y, z); delen.push({geo: g, accent}); };
+  if (soort === 'P') { const k = new THREE.OctahedronGeometry(.19, 0); k.scale(1, 1.05, 1); k.translate(0, .68, 0); delen.push({geo: k, lijn: new THREE.EdgesGeometry(k, 1)}); }
+  if (soort === 'R') {
+    for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + Math.PI / 4; blok(.15, .12, .13, Math.cos(a) * .25, .94, Math.sin(a) * .25, false, -a); }
+    blok(.66, .035, .66, 0, .30, 0, true, Math.PI / 4);
+  }
+  if (soort === 'N') {
+    const s = new THREE.Shape();
+    [[-.2, .26], [.2, .26], [.13, .50], [.30, .58], [.35, .72], [.13, .93], [.10, 1.06], [-.01, .93], [-.20, .74], [-.25, .46]].forEach((p, i) => i ? s.lineTo(p[0], p[1]) : s.moveTo(p[0], p[1]));
+    const k = new THREE.ExtrudeGeometry(s, {depth: .2, bevelEnabled: true, bevelThickness: .035, bevelSize: .035, bevelSegments: 1});
+    k.translate(0, 0, -.1); k.rotateY(Math.PI / 2);          // de neus wijst naar -z: naar de vijand van ROOD
+    delen.push({geo: k, lijn: new THREE.EdgesGeometry(k, 20)});
+    blok(.3, .05, .09, 0, .80, -.22, true);                    // het vizier
+  }
+  if (soort === 'B') { const g = new THREE.BoxGeometry(.46, .035, .46); g.rotateZ(.62); g.translate(0, .92, 0); delen.push({geo: g, accent: true}); }
+  if (soort === 'Q') {
+    for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + Math.PI / 8, c = new THREE.ConeGeometry(.05, .17, 4); c.translate(Math.cos(a) * .215, 1.16, Math.sin(a) * .215); delen.push({geo: c, accent: true}); }
+    const k = new THREE.OctahedronGeometry(.1, 0); k.translate(0, 1.1, 0); delen.push({geo: k, accent: true});
+  }
+  if (soort === 'K') { blok(.09, .30, .09, 0, 1.29, 0, true); blok(.26, .08, .09, 0, 1.32, 0, true); blok(.62, .035, .62, 0, .42, 0, true, Math.PI / 4); }
+  return geoCache[soort] = delen;
+}
+function maakStuk(letter) {
+  const k = R.kleur(letter), soort = letter.toUpperCase(), g = new THREE.Group();
+  vorm(soort).forEach(d => {
+    const m = new THREE.Mesh(d.geo, d.accent ? (k === 'w' ? mat.wDonker : mat.bLicht) : mat[k]);
+    m.castShadow = true; m.receiveShadow = true; m.userData.raak = true; g.add(m);
+    if (d.lijn) g.add(new THREE.LineSegments(d.lijn, k === 'w' ? mat.wLijn : mat.bLijn));
+  });
+  const ring = new THREE.Mesh(new THREE.PlaneGeometry(.92, .92), k === 'w' ? mat.wRing : mat.bRing);
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.012; g.add(ring);
+  if (k === 'b') g.rotation.y = Math.PI;
+  g.userData = {letter, kleur: k};
+  return g;
+}
+const bakPlek = (kleur, i) => new THREE.Vector3((-3.6 + (i % 8) * 0.62) * (kleur === 'w' ? 1 : -1), -0.62,
+                                                 (5.75 + Math.floor(i / 8) * 0.62) * (kleur === 'w' ? -1 : 1));
+
+function zetNeer() {                                           // alles in een keer goed zetten, zonder animatie
+  tweens.length = 0; animBezig = 0;
+  while (stukkenGroep.children.length) stukkenGroep.remove(stukkenGroep.children[0]);
+  opVeld.fill(null);
+  if (!spel) return;
+  for (let v = 0; v < 64; v++) if (spel.s.b[v]) {
+    const g = maakStuk(spel.s.b[v]); g.position.copy(pos(v)); stukkenGroep.add(g); opVeld[v] = g;
+  }
+  ['w', 'b'].forEach(k => spel.geslagen[k].forEach((l, i) => {
+    const g = maakStuk(l); g.position.copy(bakPlek(k, i)); g.scale.setScalar(.6); stukkenGroep.add(g);
+  }));
+  merken();
+}
+
+function tween(dur, stap, klaar) { tweens.push({t0: performance.now(), dur: RUSTIG ? Math.min(dur, 120) : dur, stap, klaar}); }
+const zacht = k => k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+
+function schuif(g, naar, dur, hoog, klaar) {
+  const van = g.position.clone();
+  animBezig++;
+  tween(dur, k => {
+    const e = zacht(k);
+    g.position.lerpVectors(van, naar, e);
+    g.position.y += Math.sin(Math.PI * k) * hoog;
+  }, () => { g.position.copy(naar); animBezig--; klaar && klaar(); });
+}
+function animeerZet(m, door, bakIndex) {
+  const g = opVeld[m.van];
+  if (!g) return zetNeer();
+  const slagVeld = m.ep ? m.naar + (door === 'w' ? -8 : 8) : m.naar, prooi = m.slag ? opVeld[slagVeld] : null;
+  const afstand = pos(m.van).distanceTo(pos(m.naar)), paard = m.stuk.toUpperCase() === 'N';
+  const dur = 230 + afstand * 55;
+  if (prooi) {
+    opVeld[slagVeld] = null;
+    const plek = bakPlek(R.kleur(m.slag), bakIndex);
+    setTimeout(() => {
+      const s0 = prooi.scale.x; animBezig++;
+      tween(180, k => prooi.scale.setScalar(s0 * (1 - .4 * k)), () => { animBezig--; schuif(prooi, plek, 520, 1.6); });
+    }, dur * .55);
+  }
+  opVeld[m.van] = null; opVeld[m.naar] = g;
+  schuif(g, pos(m.naar), dur, paard ? .95 : prooi ? .45 : .22, () => {
+    if (m.promo) {
+      stukkenGroep.remove(g);
+      const n = maakStuk(door === 'w' ? m.promo.toUpperCase() : m.promo);
+      n.position.copy(pos(m.naar)); n.scale.setScalar(.2); stukkenGroep.add(n); opVeld[m.naar] = n;
+      animBezig++; tween(320, k => n.scale.setScalar(.2 + .8 * zacht(k)), () => { n.scale.setScalar(1); animBezig--; });
+    }
+    merken();
+  });
+  if (m.rok) {
+    const van = m.rok === 'K' ? m.naar + 1 : m.naar - 2, naar = m.rok === 'K' ? m.naar - 1 : m.naar + 1, t = opVeld[van];
+    if (t) { opVeld[van] = null; opVeld[naar] = t; schuif(t, pos(naar), dur + 80, .7); }
+  }
+}
+
+// ---- merken op het bord: laatste zet, gekozen stuk, waar het heen kan, schaak
+const merkTex = {}, merkPool = [];
+function maakMerken() {
+  merkTex.laatste = tex(128, 128, (g, w) => { g.fillStyle = 'rgba(255,212,0,.2)'; g.fillRect(6, 6, w - 12, w - 12); g.strokeStyle = 'rgba(255,212,0,.9)'; g.lineWidth = 4; g.strokeRect(6, 6, w - 12, w - 12); });
+  const hoeken = (g, w, kleur, dik, len) => { g.strokeStyle = kleur; g.lineWidth = dik; const a = 8;
+    [[a, a, 1, 1], [w - a, a, -1, 1], [a, w - a, 1, -1], [w - a, w - a, -1, -1]].forEach(([x, y, sx, sy]) => { g.beginPath(); g.moveTo(x + sx * len, y); g.lineTo(x, y); g.lineTo(x, y + sy * len); g.stroke(); }); };
+  merkTex.kies = tex(128, 128, (g, w) => { g.fillStyle = 'rgba(255,255,255,.14)'; g.fillRect(0, 0, w, w); hoeken(g, w, '#ffffff', 8, 38); });
+  merkTex.doel = tex(128, 128, (g, w) => { g.fillStyle = 'rgba(53,214,230,.95)'; g.beginPath(); g.arc(w / 2, w / 2, 15, 0, 7); g.fill();
+    g.strokeStyle = 'rgba(53,214,230,.55)'; g.lineWidth = 3; g.beginPath(); g.arc(w / 2, w / 2, 27, 0, 7); g.stroke(); });
+  merkTex.slag = tex(128, 128, (g, w) => { g.fillStyle = 'rgba(255,40,30,.22)'; g.fillRect(0, 0, w, w); hoeken(g, w, '#ff3b30', 10, 44); });
+  merkTex.schaak = tex(128, 128, (g, w) => { const r = g.createRadialGradient(w / 2, w / 2, 8, w / 2, w / 2, 64); r.addColorStop(0, 'rgba(255,30,20,.95)'); r.addColorStop(1, 'rgba(255,30,20,0)'); g.fillStyle = r; g.fillRect(0, 0, w, w); });
+  merkTex.zweef = tex(128, 128, (g, w) => { g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 3; g.strokeRect(5, 5, w - 10, w - 10); });
+}
+function merk(soort, v, y) {
+  let m = merkPool.find(x => !x.visible);
+  if (!m) { m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({transparent: true, depthWrite: false})); m.rotation.x = -Math.PI / 2; merkGroep.add(m); merkPool.push(m); }
+  m.material.map = merkTex[soort]; m.material.opacity = 1; m.material.needsUpdate = true;
+  m.position.copy(pos(v)); m.position.y = y || 0.006; m.visible = true; m.userData.soort = soort; m.renderOrder = soort === 'laatste' ? 1 : 2;
+  return m;
+}
+let kies = null, zweefVeld = -1;                               // kies = {van, zetten[]}
+function merken() {
+  merkPool.forEach(m => m.visible = false);
+  if (!spel) return;
+  const l = spel.hist[spel.hist.length - 1];
+  if (l) { merk('laatste', l.m.van); merk('laatste', l.m.naar); }
+  if (spel.schaak) merk('schaak', R.koningVan(spel.s.b, spel.s.turn), 0.008);
+  if (kies) {
+    merk('kies', kies.van, 0.009);
+    const gehad = {};
+    kies.zetten.forEach(z => { if (gehad[z.naar]) return; gehad[z.naar] = 1; merk(z.slag ? 'slag' : 'doel', z.naar, 0.01); });
+  }
+  if (zweefVeld >= 0) merk('zweef', zweefVeld, 0.011);
+}
+
+function pasMaat() {
+  // Het bord moet passen in het vrije stuk van het scherm: onder de plaat van de tegenstander en de statusregel,
+  // boven de eigen plaat en de knoppen, en op een breed scherm links van het logboek.
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  const vrij = {l: 10, r: w > 1040 ? 236 : 10, t: Math.min(150, h * .22), b: Math.min(124, h * .2)};
+  camera.aspect = w / h; camera.fov = w < h ? 46 : 40;
+  CAMSTAND[0][0] = w < h * .8 ? .56 : .8;                       // rechtop (telefoon): steiler kijken, dan vult het bord de hoogte
+  if (camNr === 0) cam.tPol = CAMSTAND[0][0];
+  camera.setViewOffset(w, h, -(vrij.l - vrij.r) / 2, -(vrij.t - vrij.b) / 2, w, h);
+  camera.updateProjectionMatrix();
+  const punten = [];
+  [-1, 1].forEach(x => [-1, 1].forEach(z => { punten.push(new THREE.Vector3(x * 5.15, -.4, z * 5.15)); punten.push(new THREE.Vector3(x * 3.6, 1.35, z * 3.9)); }));
+  const s = Math.sin(CAMSTAND[0][0]), c = Math.cos(CAMSTAND[0][0]), p = new THREE.Vector3();
+  let rad = 11;
+  for (; rad < 60; rad += .5) {
+    camera.position.set(0, rad * c + .2, rad * s); camera.lookAt(0, .1, 0); camera.updateMatrixWorld();
+    if (punten.every(q => { p.copy(q).project(camera); const x = (p.x + 1) / 2 * w, y = (1 - p.y) / 2 * h; return x >= vrij.l && x <= w - vrij.r && y >= vrij.t && y <= h - vrij.b; })) break;
+  }
+  cam.pas = rad;
+  if (!cam.zelf) cam.tRad = cam.rad = cam.pas;
+}
+function lus(nu) {
+  requestAnimationFrame(lus);
+  if (document.hidden || window.__schaak.pauze) return;
+  klok.t = nu / 1000;
+  for (let i = tweens.length - 1; i >= 0; i--) {
+    const t = tweens[i], k = Math.min(1, (nu - t.t0) / t.dur);
+    t.stap(k);
+    if (k >= 1) { tweens.splice(i, 1); t.klaar && t.klaar(); }
+  }
+  const dt = Math.min(.25, Math.max(.001, klok.t - (klok.vorig || klok.t))), kk = RUSTIG ? 1 : 1 - Math.exp(-dt * 8);
+  klok.vorig = klok.t;
+  let d = cam.tAz - cam.az; d = Math.atan2(Math.sin(d), Math.cos(d));
+  cam.az += d * kk; cam.pol += (cam.tPol - cam.pol) * kk; cam.rad += (cam.tRad - cam.rad) * kk;
+  const s = Math.sin(cam.pol);
+  camera.position.set(cam.rad * s * Math.sin(cam.az), cam.rad * Math.cos(cam.pol) + .2, cam.rad * s * Math.cos(cam.az));
+  camera.lookAt(0, 0.1, 0);
+  scene.fog.near = cam.rad + 5; scene.fog.far = cam.rad + 36;
+  if (zwaai) zwaai.rotation.z = -klok.t * .5;
+  const puls = .5 + .5 * Math.sin(klok.t * 4);
+  merkPool.forEach(m => { if (!m.visible) return;
+    if (m.userData.soort === 'schaak') m.material.opacity = .45 + .55 * puls;
+    else if (m.userData.soort === 'doel') m.scale.setScalar(.92 + .1 * puls); else m.scale.setScalar(1); });
+  if (kies && opVeld[kies.van] && !animBezig) opVeld[kies.van].position.y = .16 + .04 * Math.sin(klok.t * 5);
+  renderer.render(scene, camera);
+}
+
+// ---- aanwijzen: slepen draait, twee vingers of het wiel zoomt, een tik kiest
+const straal = new THREE.Raycaster(), muis = new THREE.Vector2(), vlak = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+// Geeft twee antwoorden: het stuk dat je raakt (stuk) en het vak op het bord eronder (grond). Een hoog stuk staat
+// op het scherm voor de vakken erachter; welke van de twee je bedoelt hangt af van wat er op dat moment kan.
+function veldOp(x, y) {
+  muis.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1);
+  camera.updateMatrixWorld();
+  straal.setFromCamera(muis, camera);
+  const uit = {stuk: -1, grond: -1};
+  const raak = straal.intersectObjects(opVeld.filter(Boolean), true);
+  for (const r of raak) { if (!r.object.userData.raak) continue; let o = r.object; while (o && o.parent !== stukkenGroep) o = o.parent; const v = opVeld.indexOf(o); if (v >= 0) { uit.stuk = v; break; } }
+  const p = new THREE.Vector3();
+  if (straal.ray.intersectPlane(vlak, p)) {
+    const f = Math.floor(p.x + 4), r = Math.floor(4 - p.z);
+    if (f >= 0 && f < 8 && r >= 0 && r < 8) uit.grond = r * 8 + f;
+  }
+  return uit;
+}
+function schermVan(v, hoog) { const p = pos(v); p.y = hoog || .02; camera.updateMatrixWorld(); p.project(camera); return {x: (p.x + 1) / 2 * innerWidth, y: (1 - p.y) / 2 * innerHeight}; }
+function bedien(c) {
+  const wijs = new Map(); let sleep = false, start = null, knijp = 0;
+  c.addEventListener('pointerdown', e => {
+    c.setPointerCapture(e.pointerId); wijs.set(e.pointerId, {x: e.clientX, y: e.clientY});
+    if (wijs.size === 1) { start = {x: e.clientX, y: e.clientY, t: performance.now()}; sleep = false; }
+    else { sleep = true; const p = [...wijs.values()]; knijp = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y); }
+  });
+  c.addEventListener('pointermove', e => {
+    const p = wijs.get(e.pointerId);
+    if (!p) {                                                  // muis zonder knop: laat zien waar je bent
+      if (e.pointerType === 'mouse') { const h = magTik() ? veldOp(e.clientX, e.clientY) : null, v = !h ? -1 : h.stuk >= 0 ? h.stuk : h.grond; if (v !== zweefVeld) { zweefVeld = v; merken(); } c.style.cursor = v >= 0 ? 'pointer' : 'grab'; }
+      return;
+    }
+    const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+    if (wijs.size === 2) {
+      const q = [...wijs.values()], afst = Math.hypot(q[0].x - q[1].x, q[0].y - q[1].y);
+      if (knijp > 0 && afst > 0) { cam.tRad = Math.min(60, Math.max(8, cam.tRad * knijp / afst)); cam.zelf = true; }
+      knijp = afst; return;
+    }
+    if (!sleep && start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 7) sleep = true;
+    if (sleep) { cam.tAz -= dx * .0065; cam.tPol = Math.min(1.32, Math.max(.06, cam.tPol - dy * .005)); }
+  });
+  const los = e => {
+    const had = wijs.delete(e.pointerId);
+    if (had && wijs.size === 0 && !sleep && start && e.type === 'pointerup' && performance.now() - start.t < 700) tik(veldOp(e.clientX, e.clientY));
+    if (wijs.size === 0) start = null;
+  };
+  c.addEventListener('pointerup', los); c.addEventListener('pointercancel', los);
+  c.addEventListener('wheel', e => { e.preventDefault(); cam.tRad = Math.min(60, Math.max(8, cam.tRad * Math.exp(e.deltaY * .0012))); cam.zelf = true; }, {passive: false});
+  c.addEventListener('pointerleave', () => { if (zweefVeld >= 0) { zweefVeld = -1; merken(); } });
+}
+let camNr = 0;
+function cameraKant(k) { cam.tAz = k === 'b' ? Math.PI : 0; }
+
+// ================================================================== geluid
+let ac = null, geluidAan = opslag.lees('rtt_schaak_geluid') !== '0';
+function toon(f, begin, duur, soort, vol) {
+  const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime + begin;
+  o.type = soort || 'sine'; o.frequency.setValueAtTime(f, t);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol || .12, t + .008); g.gain.exponentialRampToValueAtTime(.0001, t + duur);
+  o.connect(g).connect(ac.destination); o.start(t); o.stop(t + duur + .02);
+}
+function geluid(soort) {
+  if (!geluidAan) return;
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
+    if (soort === 'zet') { toon(170, 0, .09, 'triangle', .22); toon(90, 0, .12, 'sine', .2); }
+    else if (soort === 'slag') { toon(120, 0, .14, 'sawtooth', .16); toon(60, .02, .22, 'sine', .25); toon(900, 0, .04, 'square', .05); }
+    else if (soort === 'schaak') { toon(880, 0, .1, 'square', .07); toon(880, .16, .1, 'square', .07); }
+    else if (soort === 'einde') { toon(220, 0, .5, 'sawtooth', .08); toon(330, .12, .5, 'sawtooth', .07); toon(440, .24, .7, 'sawtooth', .07); }
+    else if (soort === 'meld') { toon(660, 0, .08, 'sine', .1); toon(990, .09, .14, 'sine', .1); }
+  } catch (e) {}
+}
+
+// ================================================================== het spel
+let spel = null, eindeGezien = false;
+function nieuwSpel(modus, opt) {
+  opt = opt || {};
+  spel = {modus, s: R.begin(), hist: [], tel: {}, geslagen: {w: [], b: []}, ik: opt.ik || 'w', niveau: opt.niveau || 2, code: opt.code || null,
+          token: opt.token || null, kijker: !!opt.kijker, einde: null, schaak: false, srv: null, vol: modus !== 'online', verzend: false};
+  spel.tel[R.sleutel(spel.s)] = 1;
+  kies = null; eindeGezien = false;
+  ['lgStart', 'lgNodig', 'lgMee', 'lgPromo', 'lgEinde', 'lgMenu'].forEach(i => $(i).hidden = true);
+  $('vraag').hidden = true;
+  cam.zelf = false; cam.tRad = cam.rad = cam.pas; camNr = 0; cam.tPol = CAMSTAND[0][0]; cameraKant(spel.ik);
+  zetNeer(); ververs();
+}
+function pasToe(m, anim) {
+  const s0 = spel.s, not = R.notatie(s0, m);
+  spel.hist.push({m, not, uci: R.uci(m), door: s0.turn});
+  if (m.slag) spel.geslagen[R.kleur(m.slag)].push(m.slag);
+  spel.s = R.speel(s0, m);
+  const k = R.sleutel(spel.s); spel.tel[k] = (spel.tel[k] || 0) + 1;
+  const st = R.stand(spel.s, spel.tel);
+  spel.schaak = st.schaak;
+  if (st.klaar && !spel.einde) spel.einde = {uitslag: st.uitslag, reden: st.reden};
+  if (anim) {
+    animeerZet(m, s0.turn, m.slag ? spel.geslagen[R.kleur(m.slag)].length - 1 : 0);
+    geluid(st.klaar ? 'einde' : st.schaak ? 'schaak' : m.slag ? 'slag' : 'zet');
+  }
+  return st;
+}
+function herspeel(lijst) {                                     // de hele partij opnieuw opbouwen uit de zetten
+  spel.s = R.begin(); spel.hist = []; spel.tel = {}; spel.geslagen = {w: [], b: []}; spel.einde = null; spel.schaak = false;
+  spel.tel[R.sleutel(spel.s)] = 1; kies = null;
+  for (const u of lijst) { const m = R.zoek(spel.s, u); if (!m) return false; pasToe(m, false); }
+  zetNeer(); return true;
+}
+function magTik() {
+  if (!spel || spel.einde || spel.kijker || animBezig || spel.verzend) return false;
+  if (spel.modus === 'lokaal') return true;
+  return spel.s.turn === spel.ik && spel.vol;
+}
+function tik(h) {
+  if (!magTik()) { if (kies) laatLos(); return; }
+  if (kies) for (const v of [h.stuk, h.grond]) {              // eerst: is dit een vak waar het gekozen stuk heen kan?
+    if (v < 0) continue;
+    const opties = kies.zetten.filter(z => z.naar === v);
+    if (opties.length === 1) return doeZet(opties[0]);
+    if (opties.length > 1) return vraagPromo(opties);
+  }
+  const eigen = v => v >= 0 && spel.s.b[v] && R.kleur(spel.s.b[v]) === spel.s.turn;
+  const v = eigen(h.stuk) ? h.stuk : eigen(h.grond) ? h.grond : -1;
+  if (v >= 0 && (!kies || kies.van !== v)) {
+    laatLos(true);
+    kies = {van: v, zetten: R.zetten(spel.s).filter(z => z.van === v)};
+    merken(); return;
+  }
+  laatLos();
+}
+function laatLos(stil) {
+  if (kies && opVeld[kies.van]) opVeld[kies.van].position.y = 0;
+  kies = null; if (!stil) merken();
+}
+function vraagPromo(opties) {
+  $('promo').className = 'promo ' + spel.s.turn; $('lgPromo').hidden = false;
+  $('promo').onclick = e => { const b = e.target.closest('button'); if (!b) return; $('lgPromo').hidden = true; doeZet(opties.find(o => o.promo === b.dataset.p)); };
+}
+function doeZet(m) {
+  const n = spel.hist.length;
+  laatLos(true);
+  pasToe(m, true);
+  naZet();
+  if (spel.modus === 'online') verzendZet(R.uci(m), n, spel);
+  else bewaarLos();
+  if (spel.modus === 'computer') computerBeurt();
+}
+function naZet() {
+  ververs();
+  if (spel.modus === 'lokaal' && !spel.einde) cameraKant(spel.s.turn);
+  if (spel.einde) setTimeout(toonEinde, 900);
+}
+function computerBeurt() {
+  if (spel.einde || spel.s.turn === spel.ik) return;
+  const mijn = spel;
+  setTimeout(() => {
+    if (spel !== mijn || spel.einde || spel.s.turn === spel.ik) return;
+    const m = R.computerZet(spel.s, spel.niveau);
+    if (m) { pasToe(m, true); naZet(); bewaarLos(); }
+  }, 650);
+}
+function bewaarLos() {
+  if (!spel || spel.modus === 'online') return;
+  if (spel.einde) return opslag.weg('rtt_schaak_los');
+  opslag.zet('rtt_schaak_los', JSON.stringify({modus: spel.modus, ik: spel.ik, niveau: spel.niveau, zetten: spel.hist.map(h => h.uci)}));
+}
+function zetTerug() {
+  if (!spel || spel.modus === 'online' || animBezig || !spel.hist.length) return;
+  let n = spel.modus === 'computer' ? (spel.s.turn === spel.ik && !spel.einde ? 2 : 1) : 1;
+  if (spel.modus === 'computer' && spel.einde && spel.hist[spel.hist.length - 1].door !== spel.ik) n = 2;
+  const lijst = spel.hist.map(h => h.uci).slice(0, Math.max(0, spel.hist.length - n));
+  herspeel(lijst); $('lgEinde').hidden = true; eindeGezien = false;
+  if (spel.modus === 'lokaal') cameraKant(spel.s.turn);
+  ververs(); bewaarLos(); computerBeurt();
+}
+
+// ---- online
+let pollKlok = null, netFout = 0, wilNodig = false;
+const tokenSleutel = c => 'rtt_schaak_t_' + c;
+const mijnNaam = () => ($('inNaam').value || $('inNaam2').value || opslag.lees('rtt_schaak_naam') || '').trim().slice(0, 20);
+function linkVan(code) { return location.origin + location.pathname + '#s=' + code; }
+
+async function maakOnline(kleur) {
+  $('knOnline').disabled = true;
+  try {
+    const r = await rpc('schaak_nieuw', {p_kleur: kleur, p_naam: mijnNaam()});
+    opslag.zet(tokenSleutel(r.code), r.token);
+    wilNodig = true;
+    location.hash = 's=' + r.code;                             // de hashchange laadt het spel
+  } catch (e) { toast(e.message); }
+  $('knOnline').disabled = false;
+}
+async function laadOnline(code) {
+  clearTimeout(pollKlok);
+  code = code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const token = opslag.lees(tokenSleutel(code));
+  let st;
+  try { st = await rpc('schaak_stand', {p_code: code, p_token: token, p_vanaf: 0}); }
+  catch (e) {
+    if (e.status === 0) { toast('Geen verbinding. Ik probeer het opnieuw.'); pollKlok = setTimeout(() => laadOnline(code), 2500); return; }
+    toast(e.message); history.replaceState(null, '', location.pathname); return toonStart();
+  }
+  const kijker = st.kleur === 'kijker';
+  nieuwSpel('online', {code: st.code, token: kijker ? null : token, ik: kijker ? 'w' : st.kleur, kijker});
+  if (!herspeel(st.zetten)) toast('Dit spel bevat een ongeldige zet.');
+  opslag.zet('rtt_schaak_laatste', st.code);
+  verwerkServer(st, true);
+  ververs();
+  if (spel.einde) toonEinde();
+  else if (kijker && !(st.bezet_wit && st.bezet_zwart)) toonMee(st);
+  else if (!spel.vol && (wilNodig || !kijker)) toonNodig();
+  wilNodig = false;
+  planPoll();
+}
+function planPoll() {
+  clearTimeout(pollKlok);
+  if (!spel || spel.modus !== 'online') return;
+  const wacht = document.hidden ? 5000 : (spel.einde ? 4000 : (!spel.vol || spel.kijker || spel.s.turn !== spel.ik) ? 1000 : 2200);
+  pollKlok = setTimeout(poll, wacht);
+}
+async function poll() {
+  const mijn = spel;
+  if (!mijn || mijn.modus !== 'online') return;
+  if (mijn.verzend) return planPoll();
+  const n = mijn.hist.length;
+  try {
+    const st = await rpc('schaak_stand', {p_code: mijn.code, p_token: mijn.token, p_vanaf: n});
+    if (spel !== mijn) return;
+    netFout = 0;
+    if (mijn.hist.length === n && !mijn.verzend) {
+      if (st.n < n) return laadOnline(mijn.code);
+      if (st.zetten.length && !nieuweZetten(st.zetten)) { toast('Ongeldige zet ontvangen. Het spel is opnieuw geladen.'); return laadOnline(mijn.code); }
+    }
+    verwerkServer(st, false);
+  } catch (e) {
+    if (spel !== mijn) return;
+    if (e.status && e.status !== 0 && /bestaat niet/.test(e.message)) { toast(e.message); return; }
+    netFout++;
+  }
+  $('chipNet').hidden = netFout < 3;
+  planPoll();
+}
+function nieuweZetten(lijst) {
+  laatLos(true);
+  for (let i = 0; i < lijst.length; i++) {
+    const m = R.zoek(spel.s, lijst[i]);
+    if (!m) return false;
+    pasToe(m, lijst.length === 1);
+  }
+  if (lijst.length > 1) zetNeer();
+  if (document.hidden && !spel.kijker) geluid('meld');
+  naZet();
+  return true;
+}
+function verwerkServer(st, eerste) {
+  const wasVol = spel.vol;
+  spel.srv = st; spel.vol = st.bezet_wit && st.bezet_zwart;
+  if (!wasVol && spel.vol && !eerste) {
+    $('lgNodig').hidden = true; geluid('meld');
+    if (!spel.kijker) toast(((spel.ik === 'w' ? st.naam_zwart : st.naam_wit) || 'Je tegenstander') + ' doet mee. ' + (spel.ik === 'w' ? 'Jij begint.' : 'Rood begint.'));
+  }
+  if (st.uitslag && !spel.einde) { spel.einde = {uitslag: st.uitslag, reden: st.reden}; geluid('einde'); toonEinde(); }
+  const aanbod = !spel.einde && !spel.kijker && st.remise_van === anders(spel.ik);
+  if (aanbod && $('vraag').hidden) geluid('meld');
+  $('vraag').hidden = !aanbod;
+  if (aanbod) $('vraagTekst').textContent = ((spel.ik === 'w' ? st.naam_zwart : st.naam_wit) || TEAM[anders(spel.ik)]) + ' stelt remise voor.';
+  if (st.revanche && !$('lgEinde').hidden) $('knRevanche').textContent = 'Revanche: speel mee';
+  ververs();
+}
+async function verzendZet(uci, n, mijn, poging) {
+  mijn.verzend = true;
+  try {
+    const r = await rpc('schaak_zet', {p_code: mijn.code, p_token: mijn.token, p_n: n, p_zet: uci});
+    if (spel !== mijn) return;
+    mijn.verzend = false; netFout = 0; $('chipNet').hidden = true;
+    if (!r.ok && !(r.waarom === 'nummer' && r.n === n + 1 && poging)) { toast('De zet kwam niet aan. Het spel is opnieuw geladen.'); return laadOnline(mijn.code); }
+    ververs(); planPoll();
+  } catch (e) {
+    if (spel !== mijn) return;
+    if (e.status >= 400 && e.status < 500) { mijn.verzend = false; toast(e.message); return laadOnline(mijn.code); }
+    netFout = 3; $('chipNet').hidden = false;
+    setTimeout(() => { if (spel === mijn) verzendZet(uci, n, mijn, (poging || 0) + 1); }, 2000);
+  }
+}
+async function actie(wat) {
+  const mijn = spel;
+  try {
+    const r = await rpc('schaak_actie', {p_code: mijn.code, p_token: mijn.token, p_actie: wat});
+    if (spel === mijn) { clearTimeout(pollKlok); poll(); }
+    return r;
+  } catch (e) { toast(e.message); return null; }
+}
+async function doeMee(code) {
+  $('knMee').disabled = true;
+  try {
+    const n = $('inNaam2').value.trim(); if (n) opslag.zet('rtt_schaak_naam', n);
+    const r = await rpc('schaak_meedoen', {p_code: code, p_naam: n});
+    if (r.token) opslag.zet(tokenSleutel(r.code), r.token); else toast('Beide plekken zijn al bezet. Je kijkt mee.');
+    await laadOnline(r.code);
+  } catch (e) { toast(e.message); }
+  $('knMee').disabled = false;
+}
+
+// ================================================================== scherm
+function plaat(el, kleur, naam, online, jij, aanzet) {
+  el.hidden = false; el.dataset.team = kleur;
+  el.querySelector('.naam').textContent = naam;
+  const stip = el.querySelector('.stip'); stip.hidden = online === null; stip.classList.toggle('aan', !!online);
+  el.querySelector('.lab').textContent = 'TEAM ' + TEAM[kleur] + (jij ? ' · JIJ' : '');
+  // de buit: wat dit team geslagen heeft, en de voorsprong in punten
+  const buit = spel.geslagen[anders(kleur)].slice().sort((a, b) => R.WAARDE[b.toUpperCase()] - R.WAARDE[a.toUpperCase()]);
+  const som = k => spel.geslagen[k].reduce((t, p) => t + Math.round(R.WAARDE[p.toUpperCase()] / 100), 0);
+  const voor = som(anders(kleur)) - som(kleur);
+  const b = el.querySelector('.buit'); b.className = 'buit ' + anders(kleur);
+  b.textContent = buit.map(p => GLYPH[p.toUpperCase()]).join('');
+  if (voor > 0) { const i = document.createElement('i'); i.textContent = '+' + voor; b.appendChild(i); }
+  el.classList.toggle('aanzet', aanzet);
+}
+function ververs() {
+  if (!spel) return;
+  const s = spel, srv = s.srv, onder = s.modus === 'lokaal' ? 'w' : s.ik, boven = anders(onder), bezig = !s.einde;
+  const naamVan = k => {
+    if (s.modus === 'online') { const n = srv && (k === 'w' ? srv.naam_wit : srv.naam_zwart), bezet = srv && (k === 'w' ? srv.bezet_wit : srv.bezet_zwart); return bezet ? (n || 'Speler ' + TEAM[k].toLowerCase()) : 'Wacht op tegenstander'; }
+    if (s.modus === 'computer') return k === s.ik ? (opslag.lees('rtt_schaak_naam') || 'Jij') : 'Computer · ' + ['', 'Rekruut', 'Operator', 'Commandant'][s.niveau];
+    return 'Speler ' + TEAM[k].toLowerCase();
+  };
+  const online = k => s.modus === 'online' && srv ? (!s.kijker && k === s.ik ? true : (k === 'w' ? srv.online_wit : srv.online_zwart)) : null;
+  plaat($('plTegen'), boven, naamVan(boven), online(boven), false, bezig && s.s.turn === boven && s.vol);
+  plaat($('plIk'), onder, naamVan(onder), online(onder), s.modus !== 'lokaal' && !s.kijker, bezig && s.s.turn === onder && s.vol);
+  $('balk').hidden = false; $('log').hidden = false;
+
+  // de statusregel
+  const st = $('status'); let t = '', sub = '';
+  if (s.einde) { t = s.einde.uitslag === 'remise' ? 'Remise' : TEAM[s.einde.uitslag] + ' wint'; sub = s.einde.reden; }
+  else if (!s.vol) { t = 'Wacht op tegenstander'; sub = 'stuur de uitnodiging'; }
+  else {
+    const mij = s.modus !== 'lokaal' && !s.kijker && s.s.turn === s.ik;
+    t = s.schaak ? 'Schaak' : mij ? 'Jij bent aan zet' : TEAM[s.s.turn] + ' aan zet';
+    if (s.schaak) sub = mij ? 'jij moet je koning redden' : TEAM[s.s.turn] + ' aan zet';
+    else if (s.modus === 'computer' && !mij) sub = 'de computer denkt na';
+    if (s.kijker) sub = 'je kijkt mee';
+  }
+  st.textContent = t; st.classList.toggle('alarm', !!s.schaak && !s.einde);
+  if (sub) { const sm = document.createElement('small'); sm.textContent = sub; st.appendChild(sm); }
+  document.title = (!s.einde && s.modus === 'online' && !s.kijker && s.vol && s.s.turn === s.ik ? '● Jouw zet · ' : '') + 'RTT Schaak';
+
+  // knoppen
+  const speler = !s.kijker;
+  $('knRemise').hidden = s.modus === 'computer'; $('knTerug').hidden = s.modus === 'online';
+  $('knRemise').disabled = !speler || !!s.einde || (s.modus === 'online' && !s.vol);
+  $('knOpgeven').disabled = !speler || !!s.einde || (s.modus === 'online' && !s.vol);
+  $('knTerug').disabled = !s.hist.length;
+  if (!$('knRemise').dataset.vast) $('knRemise').textContent = s.modus === 'online' && srv && srv.remise_van === s.ik ? 'Aangeboden' : 'Remise';
+  const cc = $('chipCode'); cc.hidden = s.modus !== 'online'; if (s.code) cc.textContent = 'SPEL ' + s.code;
+
+  // logboek
+  const l = $('logLijst'); l.textContent = '';
+  if (!s.hist.length) { const p = document.createElement('p'); p.textContent = 'Nog geen zetten. Rood begint.'; l.appendChild(p); }
+  for (let i = 0; i < s.hist.length; i += 2) {
+    const d = document.createElement('div');
+    [String(i / 2 + 1).padStart(2, '0'), s.hist[i].not, s.hist[i + 1] ? s.hist[i + 1].not : ''].forEach((x, k) => {
+      const sp = document.createElement('span'); sp.textContent = x;
+      if (k && i + k - 1 === s.hist.length - 1) { const b = document.createElement('b'); b.className = 'nu'; b.textContent = x; sp.textContent = ''; sp.appendChild(b); }
+      d.appendChild(sp);
+    });
+    l.appendChild(d);
+  }
+  l.scrollTop = l.scrollHeight;
+  $('logTel').textContent = s.hist.length ? 'ZET ' + Math.ceil(s.hist.length / 2) : '';
+  merken();
+}
+function toonEinde() {
+  if (!spel || !spel.einde || eindeGezien) return;
+  eindeGezien = true;
+  const e = spel.einde, mee = spel.modus !== 'lokaal' && !spel.kijker;
+  const REDEN = {mat: 'Schaakmat.', pat: 'Pat: wie aan zet is kan geen zet doen en staat niet schaak.', opgegeven: TEAM[anders(e.uitslag)] + ' heeft opgegeven.',
+                 overeengekomen: 'Beide spelers kozen remise.'};
+  $('eindeKop').textContent = 'Einde missie · ' + spel.hist.length + ' zetten';
+  $('eindeTitel').innerHTML = e.uitslag === 'remise' ? 'Remise' : mee ? (e.uitslag === spel.ik ? 'Missie <b>geslaagd</b>' : 'Missie <b>mislukt</b>') : '<b>' + TEAM[e.uitslag] + '</b> wint';
+  $('eindeTekst').textContent = (REDEN[e.reden] || ('Remise: ' + e.reden + '.')) + (e.uitslag !== 'remise' && mee ? ' ' + TEAM[e.uitslag] + ' wint.' : '');
+  $('knRevanche').hidden = spel.kijker;
+  $('knRevanche').textContent = spel.srv && spel.srv.revanche ? 'Revanche: speel mee' : 'Revanche';
+  $('lgEinde').hidden = false; $('vraag').hidden = true;
+  bewaarLos(); ververs();
+}
+function toonStart() {
+  clearTimeout(pollKlok);
+  ['lgNodig', 'lgMee', 'lgEinde', 'lgMenu', 'lgPromo'].forEach(i => $(i).hidden = true);
+  $('inNaam').value = opslag.lees('rtt_schaak_naam') || '';
+  const v = $('verder'); v.hidden = true; v.textContent = '';
+  let los = null; try { los = JSON.parse(opslag.lees('rtt_schaak_los') || 'null'); } catch (e) {}
+  const laatste = opslag.lees('rtt_schaak_laatste');
+  const knop = (tekst, fn) => { const b = document.createElement('button'); b.textContent = tekst; b.onclick = fn; v.appendChild(b); v.appendChild(document.createTextNode('  ')); v.hidden = false; };
+  if (los && los.zetten && los.zetten.length) knop('Ga verder met je oefenspel', () => { nieuwSpel(los.modus, los); herspeel(los.zetten); ververs(); computerBeurt(); });
+  if (laatste) knop('Terug naar online spel ' + laatste, () => { location.hash = 's=' + laatste; });
+  if (!spel) { nieuwSpel('lokaal', {}); $('plTegen').hidden = $('plIk').hidden = $('balk').hidden = $('log').hidden = true; $('status').textContent = ''; spel = null; cam.tAz = cam.az = -.5; }
+  $('lgStart').hidden = false;
+}
+function toonNodig() {
+  if (!spel || spel.modus !== 'online') return;
+  $('inLink').value = linkVan(spel.code);
+  $('nodigKleur').textContent = spel.kijker ? '' : 'Jij speelt ' + TEAM[spel.ik] + (spel.ik === 'w' ? ' en begint.' : '; rood begint.');
+  $('nodigStatus').textContent = spel.vol ? 'Je tegenstander doet al mee' : 'Wacht op tegenstander';
+  $('knDeel').hidden = !navigator.share;
+  $('lgNodig').hidden = false;
+}
+function toonMee(st) {
+  const vrij = st.bezet_wit ? 'b' : 'w', wie = st.bezet_wit ? st.naam_wit : st.naam_zwart;
+  $('meeTekst').innerHTML = '';
+  $('meeTekst').append((wie || 'Iemand') + ' daagt je uit voor een potje RTT Schaak. Jij speelt ', Object.assign(document.createElement('strong'), {textContent: TEAM[vrij]}), vrij === 'w' ? ' en begint.' : '; rood begint.');
+  $('inNaam2').value = opslag.lees('rtt_schaak_naam') || '';
+  $('lgMee').hidden = false;
+}
+let toastKlok;
+function toast(t) { if (!t) return; const el = $('toast'); el.textContent = t; el.classList.add('aan'); clearTimeout(toastKlok); toastKlok = setTimeout(() => el.classList.remove('aan'), 3800); }
+function tweeTik(knop, tekst, fn) {                            // eerst vragen, dan doen: geen confirm(), dat houdt alles op
+  if (knop.dataset.vast) { clearTimeout(knop._k); delete knop.dataset.vast; knop.classList.remove('let'); knop.textContent = knop._oud; return fn(); }
+  knop._oud = knop.textContent; knop.dataset.vast = '1'; knop.classList.add('let'); knop.textContent = tekst;
+  knop._k = setTimeout(() => { delete knop.dataset.vast; knop.classList.remove('let'); knop.textContent = knop._oud; ververs(); }, 3500);
+}
+
+function koppel() {
+  const keus = (id, start) => { const el = $(id); el.dataset.v = start; el.onclick = e => { const b = e.target.closest('button'); if (!b) return; el.dataset.v = b.dataset.v; el.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); }; };
+  keus('keusKleur', 'w'); keus('keusNiveau', '2');
+  const kleur = () => { const v = $('keusKleur').dataset.v; return v === 'r' ? (Math.random() < .5 ? 'w' : 'b') : v; };
+  $('inNaam').onchange = () => opslag.zet('rtt_schaak_naam', $('inNaam').value.trim());
+  $('knOnline').onclick = () => { opslag.zet('rtt_schaak_naam', $('inNaam').value.trim()); maakOnline($('keusKleur').dataset.v); };
+  $('knComputer').onclick = () => { history.replaceState(null, '', location.pathname); nieuwSpel('computer', {ik: kleur(), niveau: +$('keusNiveau').dataset.v}); bewaarLos(); computerBeurt(); };
+  $('knLokaal').onclick = () => { history.replaceState(null, '', location.pathname); nieuwSpel('lokaal', {}); };
+  $('knKopieer').onclick = async () => {
+    const el = $('inLink');
+    try { await navigator.clipboard.writeText(el.value); toast('Link gekopieerd. Plak hem in een bericht.'); }
+    catch (e) { el.focus(); el.select(); try { document.execCommand('copy'); toast('Link gekopieerd.'); } catch (e2) { toast('Houd de link vast om hem te kopiëren.'); } }
+  };
+  $('knDeel').onclick = () => navigator.share({title: 'RTT Schaak', text: 'Ik daag je uit voor een potje RTT Schaak.', url: $('inLink').value}).catch(() => {});
+  $('chipCode').onclick = toonNodig;
+  $('knMee').onclick = () => doeMee(spel.code);
+  $('knKijk').onclick = () => { $('lgMee').hidden = true; };
+  $('knRemise').onclick = () => {
+    if (spel.modus === 'online') { if (spel.srv && spel.srv.remise_van === spel.ik) return; actie('remise').then(r => r && toast('Remise aangeboden. De ander moet het aannemen.')); }
+    else tweeTik($('knRemise'), 'Zeker?', () => { spel.einde = {uitslag: 'remise', reden: 'overeengekomen'}; toonEinde(); });
+  };
+  $('knOpgeven').onclick = () => tweeTik($('knOpgeven'), 'Zeker?', () => {
+    if (spel.modus === 'online') actie('opgeven');
+    else { spel.einde = {uitslag: anders(spel.modus === 'lokaal' ? spel.s.turn : spel.ik), reden: 'opgegeven'}; geluid('einde'); toonEinde(); }
+  });
+  $('knRemiseJa').onclick = () => { $('vraag').hidden = true; actie('remise'); };
+  $('knRemiseNee').onclick = () => { $('vraag').hidden = true; actie('remise_nee'); };
+  $('knTerug').onclick = zetTerug;
+  $('knCam').onclick = () => { camNr = (camNr + 1) % CAMSTAND.length; cam.tPol = CAMSTAND[camNr][0]; cam.zelf = false; cam.tRad = cam.pas * CAMSTAND[camNr][2]; if (spel && spel.modus !== 'lokaal') cameraKant(spel.ik); toast('Camera: ' + CAMSTAND[camNr][1].toLowerCase()); };
+  $('knLog').onclick = () => $('log').classList.toggle('open');
+  $('knGeluid').onclick = () => { geluidAan = !geluidAan; opslag.zet('rtt_schaak_geluid', geluidAan ? '1' : '0'); tekenGeluid(); if (geluidAan) geluid('meld'); };
+  $('knMenu').onclick = () => { $('knMenuNodig').hidden = !spel || spel.modus !== 'online'; $('lgMenu').hidden = false; };
+  $('knMenuNodig').onclick = () => { $('lgMenu').hidden = true; toonNodig(); };
+  const nieuw = () => { history.replaceState(null, '', location.pathname); toonStart(); };
+  $('knMenuNieuw').onclick = nieuw; $('knNieuw').onclick = nieuw;
+  $('knRevanche').onclick = async () => {
+    if (spel.modus !== 'online') { const o = {ik: spel.modus === 'computer' ? anders(spel.ik) : 'w', niveau: spel.niveau}, m = spel.modus; nieuwSpel(m, o); bewaarLos(); computerBeurt(); return; }
+    const token = spel.token, r = await actie('revanche');
+    if (r && r.revanche) { opslag.zet(tokenSleutel(r.revanche), token); location.hash = 's=' + r.revanche; }
+  };
+  document.querySelectorAll('[data-sluit]').forEach(b => b.onclick = () => b.closest('.laag').hidden = true);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && spel && spel.modus === 'online') { clearTimeout(pollKlok); poll(); } });
+  addEventListener('hashchange', start);
+  addEventListener('keydown', e => { if (e.key === 'Escape') { laatLos(); ['lgMenu', 'lgNodig'].forEach(i => $(i).hidden = true); $('log').classList.remove('open'); } });
+}
+function tekenGeluid() { $('icoGeluid').setAttribute('d', geluidAan ? 'M4 9h4l5-4v14l-5-4H4zM17 8c2 2 2 6 0 8' : 'M4 9h4l5-4v14l-5-4H4zM16 9l5 6M21 9l-5 6'); }
+function start() {
+  const code = new URLSearchParams(location.hash.slice(1)).get('s');
+  if (code) { $('lgStart').hidden = true; laadOnline(code); } else toonStart();
+}
+
+// voor de toets (toets/pagina_toets.js): waar een vak op het scherm staat, en de stand
+window.__schaak = {pauze: false, schermVan, get spel() { return spel; }, get bezig() { return animBezig; }, cam};
+try { bouwWereld(); } catch (e) { $('lgFout').hidden = false; console.error(e); }
+if (renderer) { koppel(); tekenGeluid(); start(); }
+</script>
+</body>
+</html>

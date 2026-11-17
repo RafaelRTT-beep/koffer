@@ -42,3 +42,21 @@ kijkers (live, vaag, verborgen, in rust, offline) en de spelleider (instellingen
 npm i playwright && npx playwright install chromium
 node toets/toets.js
 ```
+
+## RTT Schaak (map `schaak/`)
+
+Schaken in 3D in RTT-stijl, online tegen iemand die je uitnodigt: **https://rafaelrtt-beep.github.io/koffer/schaak/**
+
+- **Speel online**: kies je team (rood begint), tik *Speel online* en stuur de link (`…/schaak/#s=<code>`). Wie hem
+  opent en *Doe mee* tikt, is je tegenstander; wie daarna komt kijkt mee. Geen account nodig.
+- Ook: oefenen tegen de computer (drie niveaus) en samen op 1 scherm.
+- Volledige regels (rokade, en passant, promotie, mat, pat, remise door herhaling, 50 zetten en te weinig materiaal),
+  remise aanbieden, opgeven, revanche met de kleuren om. Notatie in het Nederlands: K D T L P.
+- `regels.js` zijn de schaakregels (ook in node), `index.html` het 3D-bord (three.js r149 in `three.min.js`, MIT,
+  zie `three.LICENSE`), `database.sql` de tabel en de vijf functies in Supabase (project RTT APP).
+- De database bewaakt wie aan de beurt is; of een zet volgens de regels mag, controleren beide browsers. Jouw stoel
+  hangt aan een geheim token dat alleen in je eigen browser staat: op een ander apparaat kijk je mee.
+- Spellen waar 60 dagen niets mee gebeurde worden gewist.
+
+Toetsen: `node schaak/toets/regels_toets.js` (de regels, met de bekende perft-getallen) en
+`node schaak/toets/pagina_toets.js` (de pagina in Chromium met een nagebootste database: twee browsers tegen elkaar).
